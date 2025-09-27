@@ -4,7 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:glowy_borders/glowy_borders.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/constants/app_constants.dart';
 
 class SpeechToTextWidget extends ConsumerStatefulWidget {
   final Function(String) onTextRecognized;
@@ -41,11 +43,11 @@ class _SpeechToTextWidgetState extends ConsumerState<SpeechToTextWidget>
     _speechToText = SpeechToText();
     _focusNode = FocusNode();
     _pulseController = AnimationController(
-      duration: const Duration(milliseconds: 1000),
+      duration: AppConstants.speechPulseAnimation,
       vsync: this,
     );
     _waveController = AnimationController(
-      duration: const Duration(milliseconds: 2000),
+      duration: AppConstants.speechWaveAnimation,
       vsync: this,
     );
     _initSpeech();
@@ -90,7 +92,7 @@ class _SpeechToTextWidgetState extends ConsumerState<SpeechToTextWidget>
         // Auto-start listening if enabled and speech is available
         if (_speechEnabled && widget.autoStart && mounted) {
           // Add a small delay to ensure the widget is fully built
-          await Future.delayed(const Duration(milliseconds: 300));
+          await Future.delayed(AppConstants.speechInitDelay);
           if (mounted && !_isListening) {
             _startListening();
             // Request focus to capture keyboard events
@@ -152,8 +154,8 @@ class _SpeechToTextWidgetState extends ConsumerState<SpeechToTextWidget>
           }
         },
         localeId: 'en_US',
-        listenFor: const Duration(seconds: 120),
-        pauseFor: const Duration(seconds: 3),
+        listenFor: AppConstants.speechListenDuration,
+        pauseFor: AppConstants.speechPauseDuration,
         listenOptions: SpeechListenOptions(
           partialResults: true,
           cancelOnError: true,
@@ -213,6 +215,49 @@ class _SpeechToTextWidgetState extends ConsumerState<SpeechToTextWidget>
     _waveController.reset();
   }
 
+  List<Color> _buildGlowColors() {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final extension = theme.extension<AppColorsExtension>()!;
+    final isDark = theme.brightness == Brightness.dark;
+
+    if (_isListening) {
+      // More vibrant glow when listening
+      if (isDark) {
+        return [
+          colorScheme.primary.withValues(alpha: 0.8),
+          extension.accent.withValues(alpha: 0.6),
+          Colors.blue.withValues(alpha: 0.7),
+          colorScheme.primary.withValues(alpha: 0.5),
+        ];
+      } else {
+        return [
+          colorScheme.primary.withValues(alpha: 0.7),
+          Colors.blue[400]!.withValues(alpha: 0.6),
+          extension.accent.withValues(alpha: 0.5),
+          colorScheme.primary.withValues(alpha: 0.4),
+        ];
+      }
+    } else {
+      // Subtle glow when not listening
+      if (isDark) {
+        return [
+          extension.accent.withValues(alpha: 0.3),
+          extension.mutedForeground.withValues(alpha: 0.2),
+          Colors.blue.withValues(alpha: 0.2),
+          extension.accent.withValues(alpha: 0.1),
+        ];
+      } else {
+        return [
+          extension.accent.withValues(alpha: 0.2),
+          Colors.blue[300]!.withValues(alpha: 0.2),
+          extension.mutedForeground.withValues(alpha: 0.1),
+          extension.accent.withValues(alpha: 0.1),
+        ];
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -222,26 +267,19 @@ class _SpeechToTextWidgetState extends ConsumerState<SpeechToTextWidget>
     return KeyboardListener(
       focusNode: _focusNode,
       onKeyEvent: _handleKeyEvent,
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: colorScheme.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: _isListening ? colorScheme.primary : extension.input,
-            width: _isListening ? 2 : 1,
+      child: AnimatedGradientBorder(
+        borderSize: AppConstants.glowBorderSize,
+        glowSize: _isListening ? AppConstants.speechGlowSizeListening : AppConstants.speechGlowSizeIdle,
+        borderRadius: BorderRadius.circular(AppConstants.speechRadius),
+        gradientColors: _buildGlowColors(),
+        animationTime: _isListening ? AppConstants.speechGlowAnimation.inMilliseconds : AppConstants.speechGlowSlowAnimation.inMilliseconds,
+        child: Container(
+          padding: AppConstants.speechContainerPadding,
+          decoration: BoxDecoration(
+            color: colorScheme.surface.withValues(alpha: 0.95),
+            borderRadius: BorderRadius.circular(AppConstants.speechRadius),
           ),
-          boxShadow: _isListening
-              ? [
-                  BoxShadow(
-                    color: colorScheme.primary.withValues(alpha: 0.2),
-                    blurRadius: 8,
-                    spreadRadius: 2,
-                  ),
-                ]
-              : null,
-        ),
-        child: Column(
+          child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
           // Status text
@@ -262,7 +300,7 @@ class _SpeechToTextWidgetState extends ConsumerState<SpeechToTextWidget>
             ),
           ),
 
-          const SizedBox(height: 16),
+          SizedBox(height: AppConstants.spacingMd),
 
           // Microphone button with animations
           GestureDetector(
@@ -270,8 +308,8 @@ class _SpeechToTextWidgetState extends ConsumerState<SpeechToTextWidget>
                 ? (_isListening ? _stopListening : _startListening)
                 : null,
             child: Container(
-              width: 80,
-              height: 80,
+              width: AppConstants.speechMicrophoneSize,
+              height: AppConstants.speechMicrophoneSize,
               decoration: BoxDecoration(
                 color: _isListening
                     ? colorScheme.primary
@@ -289,15 +327,15 @@ class _SpeechToTextWidgetState extends ConsumerState<SpeechToTextWidget>
                       animation: _waveController,
                       builder: (context, child) {
                         return Container(
-                          width: 80 + (40 * _waveController.value),
-                          height: 80 + (40 * _waveController.value),
+                          width: AppConstants.speechMicrophoneSize + (AppConstants.speechWaveExpansion * _waveController.value),
+                          height: AppConstants.speechMicrophoneSize + (AppConstants.speechWaveExpansion * _waveController.value),
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             border: Border.all(
                               color: colorScheme.primary.withValues(
                                 alpha: 0.3 * (1 - _waveController.value),
                               ),
-                              width: 2,
+                              width: AppConstants.speechWaveBorderWidth,
                             ),
                           ),
                         );
@@ -312,7 +350,7 @@ class _SpeechToTextWidgetState extends ConsumerState<SpeechToTextWidget>
                         scale: _isListening ? (1.0 + (0.1 * _pulseController.value)) : 1.0,
                         child: Icon(
                           _isListening ? Icons.mic : Icons.mic_none,
-                          size: 36,
+                          size: AppConstants.speechMicrophoneIconSize,
                           color: _isListening
                               ? colorScheme.onPrimary
                               : _speechEnabled
@@ -332,7 +370,7 @@ class _SpeechToTextWidgetState extends ConsumerState<SpeechToTextWidget>
             ),
           ),
 
-          const SizedBox(height: 16),
+          SizedBox(height: AppConstants.spacingMd),
 
           // Recognized text or error
           if (_recognizedText.isNotEmpty || _errorMessage.isNotEmpty)
@@ -362,6 +400,7 @@ class _SpeechToTextWidgetState extends ConsumerState<SpeechToTextWidget>
               ),
             ),
         ],
+        ),
         ),
       ),
     );

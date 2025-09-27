@@ -62,11 +62,19 @@ dependencies:
 
   # Animations
   flutter_animate: ^4.3.0
+  animated_text_kit: ^4.2.2
+
+  # UI Effects
+  glowy_borders: ^1.0.2
+
+  # Markdown rendering
+  flutter_markdown: ^0.6.18
+  url_launcher: ^6.2.2
 
   # Google Fonts
   google_fonts: ^6.1.0
 
-  # Speech Recognition
+  # Speech Recognition (Speech-to-text functionality retained)
   speech_to_text: ^7.0.0
   permission_handler: ^11.1.0
 

@@ -24,3 +24,5 @@ echo "Deploying app to Databricks Apps..."
 databricks apps deploy brickchat-web --source-code-path "/Workspace/Users/$DATABRICKS_USERNAME/brickchat-web"
 
 echo "Deployment complete!"
+
+
