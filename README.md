@@ -17,7 +17,7 @@
 - **Keyboard Shortcuts**: Press Escape to cancel voice input
 
 ### 🎨 **Beautiful, Adaptive Interface**
-- **Dual Themes**: Switch between light ("BrickChat") and dark ("<Customer>Chat") modes with smooth transitions
+- **Dual Themes**: Switch between light ("BrickChat") and dark ("**Customer**Chat") modes with smooth transitions
 - **Professional Design**: Clean, minimalistic interface with Databricks brand colors
 - **Responsive Layout**: Optimized for web browsers and desktop applications
 - **Animated Elements**: Smooth transitions, typing indicators, and visual feedback
