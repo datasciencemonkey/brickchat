@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
+import '../providers/settings_provider.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key});
@@ -24,6 +25,22 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+
+            // Chat Settings Section
+            _buildModernCard(
+              context,
+              icon: Icons.chat_outlined,
+              title: 'Chat Settings',
+              subtitle: 'Configure chat behavior and preferences',
+              child: Column(
+                children: [
+                  const SizedBox(height: 16),
+                  _buildStreamToggle(),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 20),
 
             // App Information Section
             _buildModernCard(
@@ -123,6 +140,47 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     );
   }
 
+
+  Widget _buildStreamToggle() {
+    final theme = Theme.of(context);
+    final appColors = context.appColors;
+    final streamResults = ref.streamResults;
+
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Stream results (experimental)',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                streamResults
+                    ? 'Responses appear word-by-word as they are generated'
+                    : 'Complete responses appear all at once (faster)',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: appColors.mutedForeground,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 16),
+        Switch(
+          value: streamResults,
+          onChanged: (value) {
+            ref.streamResultsNotifier.setStreamResults(value);
+          },
+          activeColor: theme.colorScheme.primary,
+        ),
+      ],
+    );
+  }
 
   Widget _buildInfoItem(String title, String value) {
     final theme = Theme.of(context);

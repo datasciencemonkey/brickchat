@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 abstract class AppColors {
   // Databricks Brand Colors for Light Mode
-  static const _lightBackground = Color(0xFFFBFBFB);
+  static const _lightBackground = Color(0xFFF9F7F5);
   static const _lightForeground = Color(0xFF1b3139); // Databricks navy
   static const _lightCard = Color(0xFFFFFFFF);
   static const _lightCardForeground = Color(0xFF1b3139);
@@ -94,6 +94,10 @@ abstract class AppColors {
     Color(0xFFF87171),
     Color(0xFFC084FC),
   ];
+
+  // App logos
+  static const String lightLogo = 'assets/images/light-Databricks-Emblem.png';
+  static const String darkLogo = 'assets/images/dark-dominos-logo.png';
 
   static ColorScheme get lightColorScheme => const ColorScheme.light(
         brightness: Brightness.light,

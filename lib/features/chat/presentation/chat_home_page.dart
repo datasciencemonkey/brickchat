@@ -2,19 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sidebarx/sidebarx.dart';
+import 'package:loading_animation_widget/loading_animation_widget.dart';
 import 'package:animated_text_kit/animated_text_kit.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
-import 'package:url_launcher/url_launcher.dart';
-import 'package:glowy_borders/glowy_borders.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/gradients.dart';
-import 'dart:html' as html show window, navigator;
+import 'dart:js_interop';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import '../../../core/theme/theme_provider.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../shared/widgets/theme_toggle.dart';
 import '../../../shared/widgets/speech_to_text_widget.dart';
 import '../../settings/presentation/settings_page.dart';
+import '../../settings/providers/settings_provider.dart';
 import '../../../core/services/fastapi_service.dart';
 
 class ChatHomePage extends ConsumerStatefulWidget {
@@ -31,7 +31,6 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
   final ScrollController _scrollController = ScrollController();
   final FocusNode _messageInputFocus = FocusNode();
   bool _showSpeechToText = false;
-  bool _isTextFieldFocused = false;
 
   // SidebarX controller
   late SidebarXController _sidebarController;
@@ -39,15 +38,9 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
   @override
   void initState() {
     super.initState();
-    _sidebarController = SidebarXController(selectedIndex: 0, extended: true);
+    _sidebarController = SidebarXController(selectedIndex: 0, extended: false);
     _loadInitialMessages();
 
-    // Add focus listener for glowing effect
-    _messageInputFocus.addListener(() {
-      setState(() {
-        _isTextFieldFocused = _messageInputFocus.hasFocus;
-      });
-    });
   }
 
   @override
@@ -78,7 +71,7 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
     if (messageText.isEmpty) return;
 
     final message = ChatMessage(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      id: 'user_${DateTime.now().millisecondsSinceEpoch}',
       text: messageText,
       isOwn: true,
       timestamp: DateTime.now(),
@@ -114,35 +107,82 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
       });
       _scrollToBottom();
 
-      // Get response from FastAPI backend with conversation context
+      // Allow typing indicator to be visible for the full animation sequence
+      await Future.delayed(const Duration(milliseconds: 2000));
+
+      // Get response from FastAPI backend (streaming or non-streaming based on setting)
       final conversationContext = _prepareConversationContext();
-      final responseText = await FastApiService.sendMessage(messageText, conversationContext);
+      final useStreaming = ref.read(streamResultsProvider);
 
-      // Remove typing indicator
-      setState(() {
-        _messages.removeWhere((msg) => msg.id.startsWith('typing_'));
-      });
-
-      if (mounted) {
+      if (useStreaming) {
+        // Remove typing indicator and add empty message for streaming
+        final assistantMessageId = 'assistant_${DateTime.now().millisecondsSinceEpoch}';
         final assistantMessage = ChatMessage(
-          id: DateTime.now().millisecondsSinceEpoch.toString(),
-          text: responseText,
+          id: assistantMessageId,
+          text: '',
           isOwn: false,
           timestamp: DateTime.now(),
           author: 'Assistant',
         );
 
         setState(() {
+          _messages.removeWhere((msg) => msg.id.startsWith('typing_'));
           _messages.add(assistantMessage);
         });
 
-        // Add assistant response to conversation history
-        _conversationHistory.add({
-          'role': 'assistant',
-          'content': responseText,
-        });
+        // Streaming mode - show response word by word
+        final responseBuffer = StringBuffer();
 
-        _scrollToBottom();
+        await for (final chunk in FastApiService.sendMessageStream(messageText, conversationContext)) {
+          if (mounted) {
+            responseBuffer.write(chunk);
+
+            // Update the message text with accumulated response
+            final messageIndex = _messages.indexWhere((msg) => msg.id == assistantMessageId);
+            if (messageIndex != -1) {
+              _messages[messageIndex].text = responseBuffer.toString();
+              setState(() {});
+              _scrollToBottom();
+            }
+          }
+        }
+
+        // Add final response to conversation history
+        if (mounted && responseBuffer.isNotEmpty) {
+          _conversationHistory.add({
+            'role': 'assistant',
+            'content': responseBuffer.toString(),
+          });
+        }
+      } else {
+        // Non-streaming mode - get complete response first
+        final response = await FastApiService.sendMessage(messageText, conversationContext);
+
+        if (mounted) {
+          // Create assistant message with complete response
+          final assistantMessage = ChatMessage(
+            id: 'assistant_${DateTime.now().millisecondsSinceEpoch}',
+            text: response,
+            isOwn: false,
+            timestamp: DateTime.now(),
+            author: 'Assistant',
+          );
+
+          // Remove typing indicator and add complete response
+          setState(() {
+            _messages.removeWhere((msg) => msg.id.startsWith('typing_'));
+            _messages.add(assistantMessage);
+          });
+          _scrollToBottom();
+        }
+
+        // Add final response to conversation history
+        if (mounted && response.isNotEmpty) {
+          _conversationHistory.add({
+            'role': 'assistant',
+            'content': response,
+          });
+        }
       }
     } catch (error) {
       // Remove typing indicator and show error message
@@ -150,7 +190,7 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
         setState(() {
           _messages.removeWhere((msg) => msg.id.startsWith('typing_'));
           _messages.add(ChatMessage(
-            id: DateTime.now().millisecondsSinceEpoch.toString(),
+            id: 'error_${DateTime.now().millisecondsSinceEpoch}',
             text: 'Sorry, I encountered an error: ${error.toString()}',
             isOwn: false,
             timestamp: DateTime.now(),
@@ -248,7 +288,13 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
             child: Column(
               children: [
                 AppBar(
-                  title: Text(ref.isDarkMode ? 'fBchat' : AppConstants.appName),
+                  title: Image.asset(
+                    ref.isDarkMode
+                        ? AppColors.darkLogo
+                        : AppColors.lightLogo,
+                    height: 30,
+                    fit: BoxFit.contain,
+                  ),
                   centerTitle: false,
                   actions: [
                     const ThemeToggle(),
@@ -431,13 +477,15 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
   }
 
   Widget _buildMessageList() {
-    return ListView.builder(
-      controller: _scrollController,
-      padding: const EdgeInsets.all(AppConstants.spacingMd),
-      itemCount: _messages.length,
-      itemBuilder: (context, index) {
-        return _buildMessageBubble(_messages[index]);
-      },
+    return SelectionArea(
+      child: ListView.builder(
+        controller: _scrollController,
+        padding: const EdgeInsets.all(AppConstants.spacingMd),
+        itemCount: _messages.length,
+        itemBuilder: (context, index) {
+          return _buildMessageBubble(_messages[index]);
+        },
+      ),
     );
   }
 
@@ -488,56 +536,7 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
                     borderRadius: BorderRadius.circular(AppConstants.radiusLg),
                   ),
                   child: message.id.startsWith('typing_')
-                      ? Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Flexible(
-                              child: AnimatedTextKit(
-                                animatedTexts: [
-                                  TypewriterAnimatedText(
-                                    'Assistant is working...',
-                                    textStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                      color: appColors.messageText,
-                                    ),
-                                    speed: const Duration(milliseconds: 100),
-                                  ),
-                                  TypewriterAnimatedText(
-                                    'Assistant is contacting your agent squad...',
-                                    textStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                      color: appColors.messageText,
-                                    ),
-                                    speed: const Duration(milliseconds: 80),
-                                  ),
-                                  TypewriterAnimatedText(
-                                    'Assistant is collaborating on your task...',
-                                    textStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                      color: appColors.messageText,
-                                    ),
-                                    speed: const Duration(milliseconds: 80),
-                                  ),
-                                ],
-                                totalRepeatCount: 1,
-                                pause: const Duration(milliseconds: 1500),
-                                displayFullTextOnTap: true,
-                                stopPauseOnTap: true,
-                                onFinished: () {
-                                  // This will be called when animation finishes
-                                },
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  appColors.messageText.withValues(alpha: 0.7),
-                                ),
-                              ),
-                            ),
-                          ],
-                        )
+                      ? _buildTypingIndicator(context)
                       : message.isOwn
                           ? Text(
                               message.text,
@@ -550,39 +549,48 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
                                   ? (ref.isDarkMode ? 'Welcome to fBchat!' : 'Welcome to BrickChat!')
                                   : message.text,
                               styleSheet: MarkdownStyleSheet(
-                                p: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                p: TextStyle(
                                   color: appColors.messageText,
+                                  fontSize: 14,
+                                  height: 1.4,
                                 ),
-                                a: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                  color: Theme.of(context).colorScheme.primary,
-                                  decoration: TextDecoration.underline,
+                                h1: TextStyle(
+                                  color: appColors.messageText,
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
                                 ),
-                                strong: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                h2: TextStyle(
+                                  color: appColors.messageText,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                h3: TextStyle(
+                                  color: appColors.messageText,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                code: TextStyle(
+                                  backgroundColor: appColors.muted.withValues(alpha: 0.3),
+                                  color: appColors.messageText,
+                                  fontFamily: 'monospace',
+                                  fontSize: 13,
+                                ),
+                                codeblockDecoration: BoxDecoration(
+                                  color: appColors.muted.withValues(alpha: 0.2),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: appColors.input.withValues(alpha: 0.3),
+                                  ),
+                                ),
+                                strong: TextStyle(
                                   color: appColors.messageText,
                                   fontWeight: FontWeight.bold,
                                 ),
-                                em: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                em: TextStyle(
                                   color: appColors.messageText,
                                   fontStyle: FontStyle.italic,
                                 ),
-                                code: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                  color: appColors.messageText,
-                                  backgroundColor: appColors.input.withValues(alpha: 0.1),
-                                  fontFamily: 'monospace',
-                                ),
-                                codeblockDecoration: BoxDecoration(
-                                  color: appColors.input.withValues(alpha: 0.1),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
                               ),
-                              onTapLink: (text, href, title) async {
-                                if (href != null) {
-                                  final uri = Uri.parse(href);
-                                  if (await canLaunchUrl(uri)) {
-                                    await launchUrl(uri, mode: LaunchMode.externalApplication);
-                                  }
-                                }
-                              },
                             ),
                 ),
                 const SizedBox(height: 4),
@@ -671,11 +679,8 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
                                 // Try native web clipboard API first (more reliable for web)
                                 if (kIsWeb) {
                                   try {
-                                    final nav = html.window.navigator;
-                                    if (nav.clipboard != null) {
-                                      await nav.clipboard!.writeText(text);
-                                      copySuccess = true;
-                                    }
+                                    await _writeToClipboard(text);
+                                    copySuccess = true;
                                   } catch (webError) {
                                     // Fall through to Flutter clipboard
                                   }
@@ -846,40 +851,42 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
           Row(
             children: [
               Expanded(
-                child: AnimatedGradientBorder(
-                  borderSize: 2,
-                  glowSize: _isTextFieldFocused ? 8 : 4,
-                  borderRadius: BorderRadius.circular(AppConstants.radiusLg),
-                  gradientColors: _buildGlowColors(),
-                  animationTime: 2000,
-                  child: TextField(
-                    controller: _messageController,
-                    focusNode: _messageInputFocus,
-                    decoration: InputDecoration(
-                      hintText: 'Type a message...',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(AppConstants.radiusLg),
-                        borderSide: BorderSide.none,
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(AppConstants.radiusLg),
-                        borderSide: BorderSide.none,
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(AppConstants.radiusLg),
-                        borderSide: BorderSide.none,
-                      ),
-                      filled: true,
-                      fillColor: Theme.of(context).brightness == Brightness.dark
-                          ? Colors.grey[900]?.withValues(alpha: 0.8)
-                          : Colors.white.withValues(alpha: 0.9),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: AppConstants.spacingMd,
-                        vertical: AppConstants.spacingSm,
+                child: TextField(
+                  controller: _messageController,
+                  focusNode: _messageInputFocus,
+                  decoration: InputDecoration(
+                    hintText: 'Type a message...',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(AppConstants.radiusLg),
+                      borderSide: BorderSide(
+                        color: context.appColors.input,
+                        width: 1.0,
                       ),
                     ),
-                    onSubmitted: (_) => _sendMessage(),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(AppConstants.radiusLg),
+                      borderSide: BorderSide(
+                        color: context.appColors.input,
+                        width: 1.0,
+                      ),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(AppConstants.radiusLg),
+                      borderSide: BorderSide(
+                        color: context.appColors.accent,
+                        width: 2.0,
+                      ),
+                    ),
+                    filled: true,
+                    fillColor: Theme.of(context).brightness == Brightness.dark
+                        ? Colors.grey[900]?.withValues(alpha: 0.8)
+                        : Colors.white.withValues(alpha: 0.9),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: AppConstants.spacingMd,
+                      vertical: AppConstants.spacingSm,
+                    ),
                   ),
+                  onSubmitted: (_) => _sendMessage(),
                 ),
               ),
               const SizedBox(width: AppConstants.spacingSm),
@@ -1017,46 +1024,6 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
     );
   }
 
-  List<Color> _buildGlowColors() {
-    final appColors = context.appColors;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    if (_isTextFieldFocused) {
-      // More vibrant glow when focused
-      if (isDark) {
-        return [
-          appColors.accent.withValues(alpha: 0.8),
-          appColors.accentForeground.withValues(alpha: 0.6),
-          Colors.blue.withValues(alpha: 0.7),
-          appColors.accent.withValues(alpha: 0.5),
-        ];
-      } else {
-        return [
-          appColors.accent.withValues(alpha: 0.7),
-          Colors.blue[400]!.withValues(alpha: 0.6),
-          appColors.accentForeground.withValues(alpha: 0.5),
-          appColors.accent.withValues(alpha: 0.4),
-        ];
-      }
-    } else {
-      // Subtle glow when not focused
-      if (isDark) {
-        return [
-          appColors.accent.withValues(alpha: 0.3),
-          appColors.mutedForeground.withValues(alpha: 0.2),
-          Colors.blue.withValues(alpha: 0.2),
-          appColors.accent.withValues(alpha: 0.1),
-        ];
-      } else {
-        return [
-          appColors.accent.withValues(alpha: 0.2),
-          Colors.blue[300]!.withValues(alpha: 0.2),
-          appColors.mutedForeground.withValues(alpha: 0.1),
-          appColors.accent.withValues(alpha: 0.1),
-        ];
-      }
-    }
-  }
 
   String _formatTime(DateTime dateTime) {
     final now = DateTime.now();
@@ -1073,11 +1040,79 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
     }
   }
 
+  Widget _buildTypingIndicator(BuildContext context) {
+    final appColors = context.appColors;
+
+    return Container(
+      key: const ValueKey('typing_indicator'),
+      constraints: const BoxConstraints(
+        minHeight: 40,
+        maxWidth: 300,
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: appColors.messageBubble,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: IntrinsicWidth(
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Flexible(
+              child: AnimatedTextKit(
+                animatedTexts: [
+                  TyperAnimatedText(
+                    'Assistant is working...',
+                    textStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: appColors.messageText,
+                    ),
+                    speed: const Duration(milliseconds: 100),
+                  ),
+                  TyperAnimatedText(
+                    'Contacting the right agent/squad...',
+                    textStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: appColors.messageText,
+                    ),
+                    speed: const Duration(milliseconds: 80),
+                  ),
+                  TyperAnimatedText(
+                    'Channeling controls and gathering responses...',
+                    textStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: appColors.messageText,
+                    ),
+                    speed: const Duration(milliseconds: 70),
+                  ),
+                  TyperAnimatedText(
+                    'Resolving response...',
+                    textStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: appColors.messageText,
+                    ),
+                    speed: const Duration(milliseconds: 90),
+                  ),
+                ],
+                totalRepeatCount: 1,
+                pause: const Duration(milliseconds: 800),
+                displayFullTextOnTap: true,
+                stopPauseOnTap: true,
+              ),
+            ),
+            const SizedBox(width: 8),
+            LoadingAnimationWidget.threeArchedCircle(
+              color: appColors.messageText,
+              size: 20,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
 }
 
 class ChatMessage {
   final String id;
-  final String text;
+  String text; // Made mutable for streaming updates
   final bool isOwn;
   final DateTime timestamp;
   final String author;
@@ -1091,4 +1126,12 @@ class ChatMessage {
     required this.author,
     this.isLiked,
   });
+}
+
+// JS interop for clipboard access
+@JS('navigator.clipboard.writeText')
+external JSPromise<JSAny?> _writeTextToClipboard(String text);
+
+Future<void> _writeToClipboard(String text) async {
+  await _writeTextToClipboard(text).toDart;
 }

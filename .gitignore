@@ -1,0 +1,153 @@
+# Flutter & Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+**/build/
+**/doc/api/
+**/ios/Flutter/.last_build_id
+
+# Android
+/android/app/debug
+/android/app/profile
+/android/app/release
+*.apk
+*.ap_
+*.aab
+
+# iOS
+ios/Flutter/App.framework
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+ios/Flutter/Generated.xcconfig
+ios/Flutter/ephemeral/
+ios/Pods/
+ios/Runner.xcworkspace
+ios/build/
+ios/.symlinks/
+ios/.flutter-plugins
+ios/.flutter-plugins-dependencies
+ios/.dart_tool/
+*.xcworkspace
+*.xcuserstate
+*.xcuserdata
+*.lock
+
+# macOS
+macos/Flutter/ephemeral/
+macos/Pods/
+macos/build/
+macos/.symlinks/
+macos/.flutter-plugins
+macos/.flutter-plugins-dependencies
+macos/.dart_tool/
+
+# Web
+web/build/
+web/.dart_tool/
+
+# Windows
+windows/Flutter/ephemeral/
+windows/build/
+windows/.dart_tool/
+
+# Linux
+linux/Flutter/ephemeral/
+linux/build/
+linux/.dart_tool/
+
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.pyo
+*.swp
+*.swo
+*.tmp
+*.bak
+*.orig
+*.rej
+*.sublime-workspace
+*.sublime-project
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# IDEs and editors
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+*.code-workspace
+
+# FastAPI / Python backend
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.env
+.env.*
+.venv/
+venv/
+env/
+instance/
+*.sqlite3
+*.db
+*.egg-info/
+dist/
+.eggs/
+pip-wheel-metadata/
+.mypy_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.cache/
+*.log
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+# Python FastAPI project ignores
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.env
+.env.*
+.venv/
+venv/
+env/
+instance/
+*.sqlite3
+*.db
+*.egg-info/
+dist/
+.eggs/
+pip-wheel-metadata/
+.mypy_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.cache/
+*.log
+# FastAPI static files (if any)
+staticfiles/
+# VSCode settings
+.vscode/
+# PyCharm settings
+.idea/
+# macOS
+.DS_Store

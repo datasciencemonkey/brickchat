@@ -272,7 +272,7 @@ class _SpeechToTextWidgetState extends ConsumerState<SpeechToTextWidget>
         glowSize: _isListening ? AppConstants.speechGlowSizeListening : AppConstants.speechGlowSizeIdle,
         borderRadius: BorderRadius.circular(AppConstants.speechRadius),
         gradientColors: _buildGlowColors(),
-        animationTime: _isListening ? AppConstants.speechGlowAnimation.inMilliseconds : AppConstants.speechGlowSlowAnimation.inMilliseconds,
+        animationProgress: null, // null = infinite animation
         child: Container(
           padding: AppConstants.speechContainerPadding,
           decoration: BoxDecoration(

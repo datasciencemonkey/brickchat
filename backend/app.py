@@ -1,9 +1,10 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from openai import OpenAI
 import os
+import json
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -18,18 +19,27 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Add middleware for Flutter WASM support
+@app.middleware("http")
+async def add_wasm_headers(request: Request, call_next):
+    response = await call_next(request)
+
+    # Required headers for Flutter WASM multi-threading support
+    response.headers["Cross-Origin-Embedder-Policy"] = "credentialless"
+    response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+
+    return response
+
 # Databricks configuration
 DATABRICKS_TOKEN = os.environ.get('DATABRICKS_TOKEN','')
 DATABRICKS_BASE_URL = os.environ.get('DATABRICKS_BASE_URL', 'https://adb-984752964297111.11.azuredatabricks.net/serving-endpoints')
-DATABRICKS_MODEL = os.environ.get('DATABRICKS_MODEL', 'ka-0b79c13a-endpoint') # this can be whatever....
+DATABRICKS_MODEL = os.environ.get('DATABRICKS_MODEL') # this can be whatever....
 
 # Initialize Databricks client
-databricks_client = None
-if DATABRICKS_TOKEN:
-    databricks_client = OpenAI(
-        api_key=DATABRICKS_TOKEN,
-        base_url=DATABRICKS_BASE_URL
-    )
+client = OpenAI(
+    api_key=DATABRICKS_TOKEN,
+    base_url=DATABRICKS_BASE_URL
+)
 
 @app.get("/health")
 async def health_check():
@@ -48,44 +58,86 @@ async def send_message(message: dict):
         # Extract conversation history (optional)
         conversation_history = message.get("conversation_history", [])
 
+        # Extract stream parameter (defaults to True for backward compatibility)
+        use_streaming = message.get("stream", True)
+
         # Check if Databricks client is configured
-        if not databricks_client:
+        if not DATABRICKS_TOKEN:
             raise HTTPException(
                 status_code=503,
-                detail="Databricks client not configured. Please set DATABRICKS_TOKEN environment variable."
+                detail="Databricks token not configured. Please set DATABRICKS_TOKEN environment variable."
             )
 
-        # Prepare the input messages with conversation history
-        input_messages = []
+        # Prepare the input array for Databricks endpoint
+        input_array = []
 
         # Add conversation history if provided
         if conversation_history:
             for msg in conversation_history:
-                input_messages.append({
+                input_array.append({
                     "role": msg.get("role", "user"),
                     "content": msg.get("content", "")
                 })
 
         # Add the current message
-        input_messages.append({
+        input_array.append({
             "role": "user",
             "content": message_text
         })
 
-        # Send message to Databricks using OpenAI client format
-        response = databricks_client.responses.create(
-            model=DATABRICKS_MODEL,
-            input=input_messages
-        )
+        # Send message to Databricks using the working pattern
+        try:
+            response = client.responses.create(
+                model=DATABRICKS_MODEL,
+                input=input_array,
+                stream=use_streaming
+            )
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Databricks API error: {str(e)}")
 
-        # Extract response text
-        response_text = response.output[0].content[0].text
+        if use_streaming:
+            # Create streaming response using the working pattern
+            def generate_stream():
+                try:
+                    for chunk in response:
+                        # Handle ResponseTextDeltaEvent chunks
+                        if hasattr(chunk, 'delta') and chunk.delta:
+                            content = chunk.delta
+                            yield f"data: {json.dumps({'content': content})}\n\n"
 
-        return {
-            "response": response_text,
-            "backend": "databricks",
-            "status": "success"
-        }
+                    # Send end signal
+                    yield f"data: {json.dumps({'done': True})}\n\n"
+                except Exception as e:
+                    yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+            return StreamingResponse(
+                generate_stream(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Headers": "*",
+                }
+            )
+        else:
+            # Non-streaming response - extract content from response object
+            try:
+                full_content = ""
+                if hasattr(response, 'output') and response.output:
+                    for output_message in response.output:
+                        if hasattr(output_message, 'content') and output_message.content:
+                            for content_item in output_message.content:
+                                if hasattr(content_item, 'text') and content_item.text:
+                                    full_content += content_item.text
+
+                return {
+                    "response": full_content,
+                    "backend": "databricks",
+                    "status": "success"
+                }
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Error processing response: {str(e)}")
 
     except Exception as e:
         return {
