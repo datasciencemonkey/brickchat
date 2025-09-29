@@ -34,7 +34,7 @@
 - **Settings Panel**: Easy access to app configuration and information
 
 ### 🔧 **Technical Excellence**
-- **Cross-Platform**: Works on web browsers and desktop (Windows, macOS, Linux)
+- **Cross-Platform**: Works across iOS, Android, Web browsers, and Desktop (Windows, macOS, Linux)
 - **WASM Compatible**: Modern web technology for optimal performance
 - **Clean Architecture**: Built with Flutter and Riverpod for maintainable code
 - **Error Handling**: Graceful error management with user-friendly messages

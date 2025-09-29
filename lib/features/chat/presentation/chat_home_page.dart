@@ -546,7 +546,7 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
                             )
                           : MarkdownBody(
                               data: message.text == 'WELCOME_MESSAGE'
-                                  ? (ref.isDarkMode ? 'Welcome to fBchat!' : 'Welcome to BrickChat!')
+                                  ? (ref.isDarkMode ? 'Welcome to ${AppConstants.appNameDark}!' : 'Welcome to BrickChat!')
                                   : message.text,
                               styleSheet: MarkdownStyleSheet(
                                 p: TextStyle(

@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 abstract class AppConstants {
   // App Information
   static const String appName = 'BrickChat';           // Light theme name
-  static const String appNameDark = 'fbChat';          // Dark theme name
+  static const String appNameDark = '🍕Chat';          // Dark theme name
   static const String appCaption = 'Chat with Databricks';  // Light theme caption
   static const String appCaptionDark = 'Chat with your AI agents'; // Dark theme caption
   static const String appVersion = '1.0.0';
