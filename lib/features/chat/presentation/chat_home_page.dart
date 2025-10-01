@@ -8,6 +8,7 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/gradients.dart';
 import 'dart:js_interop';
+import 'dart:convert';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import '../../../core/theme/theme_provider.dart';
 import '../../../core/constants/app_constants.dart';
@@ -32,6 +33,11 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
   final FocusNode _messageInputFocus = FocusNode();
   bool _showSpeechToText = false;
 
+  // Audio player state
+  Audio? _currentAudio;
+  String? _currentPlayingMessageId;
+  bool _isAudioPlaying = false;
+
   // SidebarX controller
   late SidebarXController _sidebarController;
 
@@ -45,6 +51,7 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
 
   @override
   void dispose() {
+    _stopAudio();
     _messageController.dispose();
     _scrollController.dispose();
     _messageInputFocus.dispose();
@@ -174,14 +181,25 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
             _messages.add(assistantMessage);
           });
           _scrollToBottom();
-        }
 
-        // Add final response to conversation history
-        if (mounted && response.isNotEmpty) {
-          _conversationHistory.add({
-            'role': 'assistant',
-            'content': response,
-          });
+          // Add final response to conversation history
+          if (response.isNotEmpty) {
+            _conversationHistory.add({
+              'role': 'assistant',
+              'content': response,
+            });
+
+            // Auto-trigger TTS if eager mode is enabled
+            final eagerMode = ref.read(eagerModeProvider);
+            if (eagerMode) {
+              // Wait a brief moment for UI to settle, then play TTS
+              Future.delayed(const Duration(milliseconds: 300), () {
+                if (mounted) {
+                  _playTextToSpeech(assistantMessage);
+                }
+              });
+            }
+          }
         }
       }
     } catch (error) {
@@ -402,7 +420,7 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  ref.isDarkMode ? 'fBchat' : 'BrickChat',
+                  ref.isDarkMode ? AppConstants.appNameDark : AppConstants.appName,
                   style: TextStyle(
                     color: appColors.sidebarForeground,
                     fontWeight: FontWeight.w600,
@@ -764,23 +782,55 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
                           ),
                           const SizedBox(width: 4),
 
-                          // Text-to-Speech button (headphones icon)
-                          GestureDetector(
-                            onTap: () {
-                              _playTextToSpeech(message.text);
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.all(4),
-                              decoration: BoxDecoration(
-                                color: appColors.input.withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(4),
+                          // Text-to-Speech button (headphones icon with play/pause/stop)
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              GestureDetector(
+                                onTap: () {
+                                  _playTextToSpeech(message);
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: BoxDecoration(
+                                    color: _currentPlayingMessageId == message.id
+                                        ? appColors.accent.withValues(alpha: 0.2)
+                                        : appColors.input.withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(4),
+                                    border: _currentPlayingMessageId == message.id
+                                        ? Border.all(color: appColors.accent.withValues(alpha: 0.3), width: 1)
+                                        : null,
+                                  ),
+                                  child: Icon(
+                                    _currentPlayingMessageId == message.id && _isAudioPlaying
+                                        ? Icons.pause
+                                        : Icons.play_arrow,
+                                    size: 12,
+                                    color: _currentPlayingMessageId == message.id
+                                        ? appColors.accent
+                                        : appColors.mutedForeground,
+                                  ),
+                                ),
                               ),
-                              child: Icon(
-                                Icons.headphones,
-                                size: 12,
-                                color: appColors.mutedForeground,
-                              ),
-                            ),
+                              if (_currentPlayingMessageId == message.id) ...[
+                                const SizedBox(width: 4),
+                                GestureDetector(
+                                  onTap: _stopAudio,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(4),
+                                    decoration: BoxDecoration(
+                                      color: appColors.input.withValues(alpha: 0.1),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Icon(
+                                      Icons.stop,
+                                      size: 12,
+                                      color: appColors.mutedForeground,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
                           ),
                         ],
                       ),
@@ -922,46 +972,177 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
     );
   }
 
-  void _playTextToSpeech(String text) {
+  void _playTextToSpeech(ChatMessage message) async {
     if (!mounted) return;
 
-    // TODO: Implement text-to-speech API call to backend
-    // This will eventually call the backend API route for text-to-speech
-    // For now, show a placeholder snackbar
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.volume_up,
-              size: 14,
-              color: Colors.white,
-            ),
-            const SizedBox(width: 6),
-            Flexible(
-              child: Text(
-                AppConstants.playingMessage,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
+    // If this message is already playing, pause it
+    if (_currentPlayingMessageId == message.id && _isAudioPlaying) {
+      _pauseAudio();
+      return;
+    }
+
+    // If this message was paused, resume it
+    if (_currentPlayingMessageId == message.id && !_isAudioPlaying && _currentAudio != null) {
+      _resumeAudio();
+      return;
+    }
+
+    // Stop any currently playing audio
+    _stopAudio();
+
+    try {
+      // Show loading snackbar
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 14,
+                height: 14,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
                   color: Colors.white,
                 ),
-                softWrap: true,
               ),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  'Generating audio...',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.white,
+                  ),
+                  softWrap: true,
+                ),
+              ),
+            ],
+          ),
+          duration: Duration(seconds: 3),
+          backgroundColor: Colors.blue.withValues(alpha: 0.85),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppConstants.snackBarRadius),
+          ),
+          elevation: 4,
+          width: MediaQuery.of(context).size.width * AppConstants.snackBarWidthFactor,
+        ),
+      );
+
+      // Get TTS settings
+      final ttsProvider = ref.read(ttsProviderProvider);
+      final ttsVoice = ref.read(ttsVoiceProvider);
+
+      // Call backend TTS API with settings
+      final response = await FastApiService.requestTts(
+        message.text,
+        provider: ttsProvider,
+        voice: ttsVoice,
+      );
+
+      if (response.statusCode == 200 && mounted) {
+        print('Response received: ${response.bodyBytes.length} bytes');
+
+        // Clear loading snackbar
+        ScaffoldMessenger.of(context).clearSnackBars();
+
+        // Play audio using web audio API
+        if (kIsWeb) {
+          try {
+            await _playAudioWeb(response.bodyBytes, message.id);
+
+            // Show success snackbar only if playback started
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.volume_up,
+                        size: 14,
+                        color: Colors.white,
+                      ),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          AppConstants.playingMessage,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.white,
+                          ),
+                          softWrap: true,
+                        ),
+                      ),
+                    ],
+                  ),
+                  duration: AppConstants.snackBarShortDuration,
+                  backgroundColor: Colors.green.withValues(alpha: 0.85),
+                  behavior: SnackBarBehavior.floating,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(AppConstants.snackBarRadius),
+                  ),
+                  elevation: 4,
+                  width: MediaQuery.of(context).size.width * AppConstants.snackBarWidthFactor,
+                ),
+              );
+            }
+          } catch (playError) {
+            print('Playback error: $playError');
+            throw Exception('Audio playback failed: $playError');
+          }
+        }
+      } else {
+        throw Exception('TTS request failed: ${response.statusCode}');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).clearSnackBars();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Failed to play audio: $e',
+              style: TextStyle(fontSize: 12, color: Colors.white),
             ),
-          ],
-        ),
-        duration: AppConstants.snackBarShortDuration,
-        backgroundColor: Colors.green.withValues(alpha: 0.85),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppConstants.snackBarRadius),
-        ),
-        elevation: 4,
-        width: MediaQuery.of(context).size.width * AppConstants.snackBarWidthFactor,
-      ),
-    );
+            duration: Duration(seconds: 2),
+            backgroundColor: Colors.red.withValues(alpha: 0.85),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
+  void _pauseAudio() {
+    if (_currentAudio != null && kIsWeb) {
+      _currentAudio!.pause();
+      setState(() {
+        _isAudioPlaying = false;
+      });
+    }
+  }
+
+  void _resumeAudio() {
+    if (_currentAudio != null && kIsWeb) {
+      _currentAudio!.play();
+      setState(() {
+        _isAudioPlaying = true;
+      });
+    }
+  }
+
+  void _stopAudio() {
+    if (_currentAudio != null && kIsWeb) {
+      _currentAudio!.pause();
+      _currentAudio!.currentTime = 0.0;
+      _currentAudio = null;
+      setState(() {
+        _currentPlayingMessageId = null;
+        _isAudioPlaying = false;
+      });
+    }
   }
 
   void _showFeedbackSnackBar(bool isLike, bool isActive) {
@@ -1108,6 +1289,95 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
     );
   }
 
+  Future<void> _playAudioWeb(List<int> audioBytes, String messageId) async {
+    print('=== _playAudioWeb START ===');
+    print('Audio bytes received: ${audioBytes.length} bytes');
+
+    // Convert bytes to base64
+    final base64Audio = base64Encode(audioBytes);
+    print('Base64 audio length: ${base64Audio.length}');
+
+    final dataUrl = 'data:audio/mpeg;base64,$base64Audio';
+    print('Data URL created (first 100 chars): ${dataUrl.substring(0, 100)}...');
+
+    // Create audio element with src in constructor (more reliable)
+    final audio = Audio(dataUrl);
+    print('Audio element created with src');
+
+    // Add event listeners for debugging
+    audio.onerror = ((JSAny? error) {
+      print('❌ Audio error event: $error');
+      print('Audio src at error: ${audio.src}');
+    }).toJS;
+
+    audio.onloadeddata = ((JSAny? event) {
+      print('✅ Audio loaded data event');
+    }).toJS;
+
+    audio.oncanplay = ((JSAny? event) {
+      print('✅ Audio can play event');
+    }).toJS;
+
+    audio.onended = ((JSAny? event) {
+      print('✅ Audio ended event');
+      if (mounted) {
+        setState(() {
+          _currentAudio = null;
+          _currentPlayingMessageId = null;
+          _isAudioPlaying = false;
+        });
+      }
+    }).toJS;
+
+    // Store reference to current audio
+    _currentAudio = audio;
+    _currentPlayingMessageId = messageId;
+    print('Audio reference stored');
+
+    // Try to play with better error handling
+    print('About to call play()...');
+    try {
+      // Load the audio first
+      audio.load();
+      print('Audio load() called');
+
+      // Small delay to allow loading
+      await Future.delayed(Duration(milliseconds: 100));
+
+      final playPromise = audio.play();
+      print('play() called, awaiting promise...');
+      await playPromise.toDart;
+      print('✅ Play promise resolved!');
+
+      _isAudioPlaying = true;
+      print('Audio playing successfully');
+
+      // Update state to reflect playback
+      if (mounted) {
+        setState(() {});
+      }
+    } catch (playError) {
+      print('❌ Play error: $playError');
+      print('Error type: ${playError.runtimeType}');
+
+      // Check if it's an autoplay error
+      final errorStr = playError.toString().toLowerCase();
+      if (errorStr.contains('autoplay') || errorStr.contains('notallowederror')) {
+        throw Exception('Browser blocked autoplay. Please interact with the page first.');
+      }
+
+      _currentAudio = null;
+      _currentPlayingMessageId = null;
+      _isAudioPlaying = false;
+      if (mounted) {
+        setState(() {});
+      }
+      rethrow;
+    }
+
+    print('=== _playAudioWeb END ===');
+  }
+
 }
 
 class ChatMessage {
@@ -1134,4 +1404,25 @@ external JSPromise<JSAny?> _writeTextToClipboard(String text);
 
 Future<void> _writeToClipboard(String text) async {
   await _writeTextToClipboard(text).toDart;
+}
+
+// JS interop for audio playback
+@JS('Audio')
+@staticInterop
+class Audio {
+  external factory Audio([String? src]);
+}
+
+extension AudioElement on Audio {
+  external set src(String src);
+  external String get src;
+  external set currentTime(double value);
+  external double get currentTime;
+  external JSPromise<JSAny?> play();
+  external void pause();
+  external void load();
+  external set onerror(JSFunction callback);
+  external set onloadeddata(JSFunction callback);
+  external set oncanplay(JSFunction callback);
+  external set onended(JSFunction callback);
 }

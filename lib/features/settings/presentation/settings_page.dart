@@ -36,6 +36,26 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 children: [
                   const SizedBox(height: 16),
                   _buildStreamToggle(),
+                  const SizedBox(height: 16),
+                  _buildEagerModeToggle(),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
+            // Text-to-Speech Settings Section
+            _buildModernCard(
+              context,
+              icon: Icons.volume_up_outlined,
+              title: 'Text-to-Speech',
+              subtitle: 'Configure voice output settings',
+              child: Column(
+                children: [
+                  const SizedBox(height: 16),
+                  _buildTtsProviderDropdown(),
+                  const SizedBox(height: 16),
+                  _buildTtsVoiceDropdown(),
                 ],
               ),
             ),
@@ -145,6 +165,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     final theme = Theme.of(context);
     final appColors = context.appColors;
     final streamResults = ref.streamResults;
+    final eagerMode = ref.eagerMode;
 
     return Row(
       children: [
@@ -173,10 +194,177 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         const SizedBox(width: 16),
         Switch(
           value: streamResults,
-          onChanged: (value) {
+          onChanged: eagerMode ? null : (value) {
             ref.streamResultsNotifier.setStreamResults(value);
           },
-          activeColor: theme.colorScheme.primary,
+          activeTrackColor: theme.colorScheme.primary,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEagerModeToggle() {
+    final theme = Theme.of(context);
+    final appColors = context.appColors;
+    final eagerMode = ref.eagerMode;
+    final streamResults = ref.streamResults;
+
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Eager mode',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                eagerMode
+                    ? 'Automatically play TTS after response completes'
+                    : streamResults
+                        ? 'Turn off streaming to enable eager mode'
+                        : 'Manually trigger TTS playback',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: appColors.mutedForeground,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 16),
+        Switch(
+          value: eagerMode,
+          onChanged: streamResults ? null : (value) {
+            ref.eagerModeNotifier.setEagerMode(value);
+          },
+          activeTrackColor: theme.colorScheme.primary,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTtsProviderDropdown() {
+    final theme = Theme.of(context);
+    final appColors = context.appColors;
+    final currentProvider = ref.ttsProvider;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'TTS Provider',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          decoration: BoxDecoration(
+            border: Border.all(
+              color: appColors.input.withValues(alpha: 0.5),
+            ),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: DropdownButton<String>(
+            value: currentProvider,
+            isExpanded: true,
+            underline: const SizedBox(),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            items: TtsProvider.values.map((provider) {
+              return DropdownMenuItem<String>(
+                value: provider.value,
+                child: Text(provider.displayName),
+              );
+            }).toList(),
+            onChanged: (value) {
+              if (value != null) {
+                ref.ttsProviderNotifier.setProvider(value);
+                // Reset voice to default when changing provider
+                if (value == TtsProvider.replicate.value) {
+                  ref.ttsVoiceNotifier.setVoice('af_nicole');
+                } else {
+                  ref.ttsVoiceNotifier.setVoice('aura-2-thalia-en');
+                }
+              }
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTtsVoiceDropdown() {
+    final theme = Theme.of(context);
+    final appColors = context.appColors;
+    final currentProvider = ref.ttsProvider;
+    final currentVoice = ref.ttsVoice;
+
+    // Get voices based on selected provider
+    final voices = currentProvider == TtsProvider.replicate.value
+        ? ReplicateVoices.voices
+        : DeepgramVoices.voices;
+
+    // Ensure current voice is valid for the selected provider
+    final validVoice = voices.contains(currentVoice)
+        ? currentVoice
+        : voices.first;
+
+    if (validVoice != currentVoice) {
+      // Update to valid voice if current is invalid
+      Future.microtask(() => ref.ttsVoiceNotifier.setVoice(validVoice));
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Voice',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          decoration: BoxDecoration(
+            border: Border.all(
+              color: appColors.input.withValues(alpha: 0.5),
+            ),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: DropdownButton<String>(
+            value: validVoice,
+            isExpanded: true,
+            underline: const SizedBox(),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            items: voices.map((voice) {
+              final displayName = currentProvider == TtsProvider.replicate.value
+                  ? ReplicateVoices.getDisplayName(voice)
+                  : DeepgramVoices.getDisplayName(voice);
+
+              return DropdownMenuItem<String>(
+                value: voice,
+                child: Text(displayName),
+              );
+            }).toList(),
+            onChanged: (value) {
+              if (value != null) {
+                ref.ttsVoiceNotifier.setVoice(value);
+              }
+            },
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          currentProvider == TtsProvider.replicate.value
+              ? 'Replicate voices powered by Kokoro-82M'
+              : 'Deepgram Aura voices',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: appColors.mutedForeground,
+          ),
         ),
       ],
     );

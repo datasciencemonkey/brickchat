@@ -104,4 +104,31 @@ class FastApiService {
   static Future<String> sendMessageLegacy(String message, [List<Map<String, String>>? conversationHistory]) async {
     return sendMessage(message, conversationHistory);
   }
+
+  /// Get text-to-speech audio URL from backend
+  static String getTtsAudioUrl(String text) {
+    // Return the URL that will be used to fetch the audio
+    return '$baseUrl/api/tts/speak';
+  }
+
+  /// Request text-to-speech audio from backend
+  static Future<http.Response> requestTts(String text, {String? provider, String? voice}) async {
+    try {
+      final url = Uri.parse('$baseUrl/api/tts/speak');
+      final requestBody = {
+        'text': text,
+        if (provider != null) 'provider': provider,
+        if (voice != null) 'voice': voice,
+      };
+
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode(requestBody),
+      );
+      return response;
+    } catch (e) {
+      throw Exception('Error requesting TTS: $e');
+    }
+  }
 }
