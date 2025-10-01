@@ -16,6 +16,14 @@
 - **Permission Handling**: Seamless microphone access with user-friendly prompts
 - **Keyboard Shortcuts**: Press Escape to cancel voice input
 
+### 🔊 **Text-to-Speech (TTS) Features**
+- **Dual Provider Support**: Choose between Replicate (Kokoro-82M) or Deepgram (Aura) for optimal voice quality
+- **18+ Voice Options**: Select from diverse voices including male and female options
+- **Eager Mode**: Automatically play TTS after AI responses complete (requires streaming to be disabled)
+- **Manual TTS Control**: Click the speaker icon on any message to play audio
+- **Provider Fallback**: Automatic fallback between TTS providers if one fails
+- **Voice Persistence**: Your voice and provider preferences are saved across sessions
+
 ### 🎨 **Beautiful, Adaptive Interface**
 - **Dual Themes**: Switch between light ("BrickChat") and dark ("**Customer**Chat") modes with smooth transitions
 - **Professional Design**: Clean, minimalistic interface with Databricks brand colors
@@ -29,7 +37,10 @@
 - **Message History**: Scrollable conversation with timestamps and author labels
 
 ### ⚙️ **Customizable Settings**
-- **Streaming Toggle**: Enable/disable real-time response streaming
+- **Streaming Toggle**: Enable/disable real-time response streaming (experimental)
+- **Eager Mode**: Automatically play text-to-speech after responses complete
+- **TTS Provider Selection**: Choose between Replicate (Kokoro-82M) or Deepgram (Aura) voices
+- **Voice Customization**: Select from 18+ voices across different providers
 - **Theme Persistence**: Your theme preference is remembered across sessions
 - **Settings Panel**: Easy access to app configuration and information
 
@@ -44,6 +55,24 @@
 - **AI Researchers** needing intelligent conversation tools
 - **Business Users** requiring professional chat interfaces
 - **Developers** building AI-powered applications
+
+## ⚙️ **Response Modes & TTS Settings**
+
+### **Streaming vs Eager Mode**
+BrickChat offers two distinct response modes that affect how you receive and interact with AI responses:
+
+- **Streaming Mode** (Experimental): Responses appear word-by-word as they are generated, providing real-time feedback
+- **Eager Mode**: Automatically plays text-to-speech after the complete response is ready
+
+**Important**: These modes are mutually exclusive - enabling streaming disables eager mode, and vice versa. This ensures optimal performance and user experience.
+
+### **TTS Configuration**
+Access the settings panel to customize your text-to-speech experience:
+
+1. **Provider Selection**: Choose between Replicate (Kokoro-82M) or Deepgram (Aura)
+2. **Voice Selection**: Pick from 18+ voices including male and female options
+3. **Eager Mode**: Enable automatic TTS playback after responses complete
+4. **Manual Control**: Click the speaker icon on any message for on-demand audio
 
 ## 🚀 **Getting Started**
 Simply type your message or click the microphone to start speaking. The AI assistant will respond intelligently based on your conversation context, making it feel like chatting with a knowledgeable colleague.
