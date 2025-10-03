@@ -38,21 +38,21 @@ dependencies:
   sidebarx: ^0.17.1
 
   # State Management
-  flutter_riverpod: ^2.4.9
+  flutter_riverpod: ^2.6.1
   riverpod_annotation: ^2.3.3
 
   # Storage and Persistence
   shared_preferences: ^2.2.2
 
   # Dependency Injection
-  get_it: ^7.6.4
+  get_it: ^8.2.0
 
   # HTTP and Networking
   http: ^1.1.2
 
   # Utilities
   uuid: ^4.2.1
-  intl: ^0.19.0
+  intl: ^0.20.2
 
   # File handling (WASM compatible)
   file_selector: ^1.0.3
@@ -75,7 +75,7 @@ dependencies:
 
   # Speech Recognition (Speech-to-text functionality retained)
   speech_to_text: ^7.0.0
-  permission_handler: ^11.1.0
+  permission_handler: ^12.0.1
 
   # Markdown rendering
   flutter_markdown: ^0.7.4
@@ -85,7 +85,7 @@ dev_dependencies:
     sdk: flutter
 
   # Linting and Code Generation
-  flutter_lints: ^5.0.0
+  flutter_lints: ^6.0.0
   riverpod_generator: ^2.3.9
   build_runner: ^2.4.7
   json_annotation: ^4.8.1

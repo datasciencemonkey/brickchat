@@ -3,7 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 /// Provider for stream results setting
 final streamResultsProvider = StateNotifierProvider<StreamResultsNotifier, bool>((ref) {
-  return StreamResultsNotifier();
+  return StreamResultsNotifier(ref);
 });
 
 /// Provider for TTS provider selection
@@ -105,7 +105,9 @@ class DeepgramVoices {
 
 /// Stream results setting notifier
 class StreamResultsNotifier extends StateNotifier<bool> {
-  StreamResultsNotifier() : super(false) {
+  final Ref _ref;
+
+  StreamResultsNotifier(this._ref) : super(false) {
     _loadSetting();
   }
 
@@ -133,9 +135,11 @@ class StreamResultsNotifier extends StateNotifier<bool> {
       await prefs.setBool(SettingsKeys.streamResults, enabled);
       state = enabled;
 
-      // If enabling streaming, disable eager mode
+      // If enabling streaming, disable eager mode and notify the provider
       if (enabled) {
         await prefs.setBool(SettingsKeys.eagerMode, false);
+        // Force the eager mode provider to update its state
+        _ref.read(eagerModeProvider.notifier).state = false;
       }
     } catch (e) {
       // If saving fails, revert to previous state
@@ -242,7 +246,10 @@ class EagerModeNotifier extends StateNotifier<bool> {
       if (enabled) {
         final streamEnabled = _ref.read(streamResultsProvider);
         if (streamEnabled) {
-          await _ref.read(streamResultsProvider.notifier).setStreamResults(false);
+          // Disable streaming in SharedPreferences and update the provider state
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setBool(SettingsKeys.streamResults, false);
+          _ref.read(streamResultsProvider.notifier).state = false;
         }
       }
 
