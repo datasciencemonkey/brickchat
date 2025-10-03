@@ -53,6 +53,7 @@ dependencies:
   # Utilities
   uuid: ^4.2.1
   intl: ^0.20.2
+  logging: ^1.2.0
 
   # File handling (WASM compatible)
   file_selector: ^1.0.3

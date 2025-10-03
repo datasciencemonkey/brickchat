@@ -1,11 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:logging/logging.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_provider.dart';
 import 'core/constants/app_constants.dart';
 import 'features/chat/presentation/chat_home_page.dart';
 
 void main() {
+  // Configure logging
+  Logger.root.level = Level.ALL;
+  Logger.root.onRecord.listen((record) {
+    // ignore: avoid_print
+    print('${record.level.name}: ${record.time}: ${record.loggerName}: ${record.message}');
+  });
+
   runApp(const ProviderScope(child: BrickChatApp()));
 }
 

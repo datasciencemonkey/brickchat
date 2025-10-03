@@ -5,6 +5,7 @@ import 'package:sidebarx/sidebarx.dart';
 import 'package:loading_animation_widget/loading_animation_widget.dart';
 import 'package:animated_text_kit/animated_text_kit.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:logging/logging.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/gradients.dart';
 import 'dart:js_interop';
@@ -14,9 +15,11 @@ import '../../../core/theme/theme_provider.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../shared/widgets/theme_toggle.dart';
 import '../../../shared/widgets/speech_to_text_widget.dart';
+import '../../../shared/widgets/collapsible_reasoning_widget.dart';
 import '../../settings/presentation/settings_page.dart';
 import '../../settings/providers/settings_provider.dart';
 import '../../../core/services/fastapi_service.dart';
+import '../../../core/utils/tts_text_cleaner.dart';
 
 class ChatHomePage extends ConsumerStatefulWidget {
   const ChatHomePage({super.key});
@@ -26,6 +29,7 @@ class ChatHomePage extends ConsumerStatefulWidget {
 }
 
 class _ChatHomePageState extends ConsumerState<ChatHomePage> {
+  final _log = Logger('ChatHomePage');
   final List<ChatMessage> _messages = [];
   final List<Map<String, String>> _conversationHistory = [];
   final TextEditingController _messageController = TextEditingController();
@@ -37,6 +41,7 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
   Audio? _currentAudio;
   String? _currentPlayingMessageId;
   bool _isAudioPlaying = false;
+  bool _isAudioLoading = false; // Track if TTS is being generated
 
   // SidebarX controller
   late SidebarXController _sidebarController;
@@ -130,6 +135,7 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
           isOwn: false,
           timestamp: DateTime.now(),
           author: 'Assistant',
+          isStreaming: true, // Mark as streaming
         );
 
         setState(() {
@@ -151,6 +157,15 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
               setState(() {});
               _scrollToBottom();
             }
+          }
+        }
+
+        // Mark streaming as complete
+        if (mounted) {
+          final messageIndex = _messages.indexWhere((msg) => msg.id == assistantMessageId);
+          if (messageIndex != -1) {
+            _messages[messageIndex].isStreaming = false;
+            setState(() {});
           }
         }
 
@@ -562,8 +577,8 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
                                 color: appColors.messageTextOwn,
                               ),
                             )
-                          : MarkdownBody(
-                              data: message.text == 'WELCOME_MESSAGE'
+                          : CollapsibleReasoningWidget(
+                              messageText: message.text == 'WELCOME_MESSAGE'
                                   ? (ref.isDarkMode ? 'Welcome to ${AppConstants.appNameDark}!' : 'Welcome to BrickChat!')
                                   : message.text,
                               styleSheet: MarkdownStyleSheet(
@@ -615,12 +630,25 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
                 Row(
                   mainAxisAlignment: message.isOwn ? MainAxisAlignment.end : MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      _formatTime(message.timestamp),
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: appColors.mutedForeground,
-                        fontSize: 10,
-                      ),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _formatTime(message.timestamp),
+                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                            color: appColors.mutedForeground,
+                            fontSize: 10,
+                          ),
+                        ),
+                        // Streaming indicator
+                        if (message.isStreaming && !message.isOwn) ...[
+                          const SizedBox(width: 8),
+                          LoadingAnimationWidget.staggeredDotsWave(
+                            color: appColors.accent,
+                            size: 16,
+                          ),
+                        ],
+                      ],
                     ),
                     if (!message.isOwn && !message.id.startsWith('typing_'))
                       Row(
@@ -788,28 +816,40 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
                             children: [
                               GestureDetector(
                                 onTap: () {
-                                  _playTextToSpeech(message);
+                                  // Prevent multiple taps while loading
+                                  if (!_isAudioLoading) {
+                                    _playTextToSpeech(message);
+                                  }
                                 },
                                 child: Container(
                                   padding: const EdgeInsets.all(4),
                                   decoration: BoxDecoration(
-                                    color: _currentPlayingMessageId == message.id
+                                    color: (_currentPlayingMessageId == message.id || (_isAudioLoading && _currentPlayingMessageId == message.id))
                                         ? appColors.accent.withValues(alpha: 0.2)
                                         : appColors.input.withValues(alpha: 0.1),
                                     borderRadius: BorderRadius.circular(4),
-                                    border: _currentPlayingMessageId == message.id
+                                    border: (_currentPlayingMessageId == message.id || (_isAudioLoading && _currentPlayingMessageId == message.id))
                                         ? Border.all(color: appColors.accent.withValues(alpha: 0.3), width: 1)
                                         : null,
                                   ),
-                                  child: Icon(
-                                    _currentPlayingMessageId == message.id && _isAudioPlaying
-                                        ? Icons.pause
-                                        : Icons.play_arrow,
-                                    size: 12,
-                                    color: _currentPlayingMessageId == message.id
-                                        ? appColors.accent
-                                        : appColors.mutedForeground,
-                                  ),
+                                  child: _isAudioLoading && _currentPlayingMessageId == message.id
+                                      ? SizedBox(
+                                          width: 12,
+                                          height: 12,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 1.5,
+                                            color: appColors.accent,
+                                          ),
+                                        )
+                                      : Icon(
+                                          _currentPlayingMessageId == message.id && _isAudioPlaying
+                                              ? Icons.pause
+                                              : Icons.play_arrow,
+                                          size: 12,
+                                          color: _currentPlayingMessageId == message.id
+                                              ? appColors.accent
+                                              : appColors.mutedForeground,
+                                        ),
                                 ),
                               ),
                               if (_currentPlayingMessageId == message.id) ...[
@@ -991,6 +1031,27 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
     _stopAudio();
 
     try {
+      // Clean text for TTS (remove think tags, markdown, special characters)
+      final cleanedText = TtsTextCleaner.cleanForTts(message.text);
+
+      // Skip TTS if cleaned text is empty
+      if (cleanedText.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'No speakable content in message',
+                style: TextStyle(fontSize: 12, color: Colors.white),
+              ),
+              duration: Duration(seconds: 2),
+              backgroundColor: Colors.orange.withValues(alpha: 0.85),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+        return;
+      }
+
       // Show loading snackbar
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1034,15 +1095,15 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
       final ttsProvider = ref.read(ttsProviderProvider);
       final ttsVoice = ref.read(ttsVoiceProvider);
 
-      // Call backend TTS API with settings
+      // Call backend TTS API with cleaned text
       final response = await FastApiService.requestTts(
-        message.text,
+        cleanedText,
         provider: ttsProvider,
         voice: ttsVoice,
       );
 
       if (response.statusCode == 200 && mounted) {
-        print('Response received: ${response.bodyBytes.length} bytes');
+        _log.info('TTS response received: ${response.bodyBytes.length} bytes');
 
         // Clear loading snackbar
         ScaffoldMessenger.of(context).clearSnackBars();
@@ -1090,7 +1151,7 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
               );
             }
           } catch (playError) {
-            print('Playback error: $playError');
+            _log.severe('Audio playback error: $playError');
             throw Exception('Audio playback failed: $playError');
           }
         }
@@ -1290,36 +1351,35 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
   }
 
   Future<void> _playAudioWeb(List<int> audioBytes, String messageId) async {
-    print('=== _playAudioWeb START ===');
-    print('Audio bytes received: ${audioBytes.length} bytes');
+    _log.fine('Audio playback started - ${audioBytes.length} bytes');
 
     // Convert bytes to base64
     final base64Audio = base64Encode(audioBytes);
-    print('Base64 audio length: ${base64Audio.length}');
+    _log.fine('Base64 audio length: ${base64Audio.length}');
 
     final dataUrl = 'data:audio/mpeg;base64,$base64Audio';
-    print('Data URL created (first 100 chars): ${dataUrl.substring(0, 100)}...');
+    _log.fine('Data URL created (first 100 chars): ${dataUrl.substring(0, 100)}...');
 
     // Create audio element with src in constructor (more reliable)
     final audio = Audio(dataUrl);
-    print('Audio element created with src');
+    _log.fine('Audio element created with src');
 
     // Add event listeners for debugging
     audio.onerror = ((JSAny? error) {
-      print('❌ Audio error event: $error');
-      print('Audio src at error: ${audio.src}');
+      _log.warning('Audio error event: $error');
+      _log.warning('Audio src at error: ${audio.src}');
     }).toJS;
 
     audio.onloadeddata = ((JSAny? event) {
-      print('✅ Audio loaded data event');
+      _log.fine('Audio loaded data event');
     }).toJS;
 
     audio.oncanplay = ((JSAny? event) {
-      print('✅ Audio can play event');
+      _log.fine('Audio can play event');
     }).toJS;
 
     audio.onended = ((JSAny? event) {
-      print('✅ Audio ended event');
+      _log.fine('Audio ended event');
       if (mounted) {
         setState(() {
           _currentAudio = null;
@@ -1332,33 +1392,33 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
     // Store reference to current audio
     _currentAudio = audio;
     _currentPlayingMessageId = messageId;
-    print('Audio reference stored');
+    _log.fine('Audio reference stored');
 
     // Try to play with better error handling
-    print('About to call play()...');
+    _log.fine('About to call play()...');
     try {
       // Load the audio first
       audio.load();
-      print('Audio load() called');
+      _log.fine('Audio load() called');
 
       // Small delay to allow loading
       await Future.delayed(Duration(milliseconds: 100));
 
       final playPromise = audio.play();
-      print('play() called, awaiting promise...');
+      _log.fine('play() called, awaiting promise...');
       await playPromise.toDart;
-      print('✅ Play promise resolved!');
+      _log.info('Audio play promise resolved');
 
       _isAudioPlaying = true;
-      print('Audio playing successfully');
+      _log.info('Audio playing successfully');
 
       // Update state to reflect playback
       if (mounted) {
         setState(() {});
       }
     } catch (playError) {
-      print('❌ Play error: $playError');
-      print('Error type: ${playError.runtimeType}');
+      _log.severe('Audio play error: $playError');
+      _log.severe('Error type: ${playError.runtimeType}');
 
       // Check if it's an autoplay error
       final errorStr = playError.toString().toLowerCase();
@@ -1375,7 +1435,7 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
       rethrow;
     }
 
-    print('=== _playAudioWeb END ===');
+    _log.fine('Audio playback setup complete');
   }
 
 }
@@ -1387,6 +1447,7 @@ class ChatMessage {
   final DateTime timestamp;
   final String author;
   bool? isLiked; // null = no rating, true = liked, false = disliked
+  bool isStreaming; // Track if this message is currently being streamed
 
   ChatMessage({
     required this.id,
@@ -1395,6 +1456,7 @@ class ChatMessage {
     required this.timestamp,
     required this.author,
     this.isLiked,
+    this.isStreaming = false,
   });
 }
 

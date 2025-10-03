@@ -4,6 +4,7 @@ from openai import OpenAI
 import os
 from dotenv import load_dotenv
 import json
+import re
 load_dotenv()
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
@@ -70,14 +71,43 @@ async def send_message(message: dict):
             raise HTTPException(status_code=500, detail=f"Databricks API error: {str(e)}")
 
         if use_streaming:
-            # Create streaming response using the working pattern
+            # Create streaming response with buffering for complete markdown structures
             def generate_stream():
                 try:
+                    buffer = ""
+                    # Regex pattern to match sentence/paragraph boundaries
+                    # Matches: period/question/exclamation followed by space or newline, or double newlines
+                    boundary_pattern = re.compile(r'([.!?]\s+|\n\n)')
+
+                    # Pattern to remove citation/reference artifacts like [^TIBB-1]12 or [^hEnJ-6]4
+                    citation_pattern = re.compile(r'\[\^[A-Za-z0-9\-]+\]\d*')
+
                     for chunk in response:
                         # Handle ResponseTextDeltaEvent chunks
                         if hasattr(chunk, 'delta') and chunk.delta:
                             content = chunk.delta
-                            yield f"data: {json.dumps({'content': content})}\n\n"
+                            buffer += content
+
+                            # Check if buffer contains a natural breakpoint
+                            match = boundary_pattern.search(buffer)
+                            if match:
+                                # Find the position after the boundary
+                                split_pos = match.end()
+
+                                # Send everything up to and including the boundary
+                                to_send = buffer[:split_pos]
+                                buffer = buffer[split_pos:]
+
+                                # Clean citation artifacts before sending
+                                to_send = citation_pattern.sub('', to_send)
+
+                                yield f"data: {json.dumps({'content': to_send})}\n\n"
+
+                    # Send any remaining buffered content
+                    if buffer:
+                        # Clean citation artifacts before sending
+                        buffer = citation_pattern.sub('', buffer)
+                        yield f"data: {json.dumps({'content': buffer})}\n\n"
 
                     # Send end signal
                     yield f"data: {json.dumps({'done': True})}\n\n"
