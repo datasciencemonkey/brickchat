@@ -16,6 +16,7 @@ import '../../../core/constants/app_constants.dart';
 import '../../../shared/widgets/theme_toggle.dart';
 import '../../../shared/widgets/speech_to_text_widget.dart';
 import '../../../shared/widgets/collapsible_reasoning_widget.dart';
+import '../../../shared/widgets/footnotes_accordion.dart';
 import '../../settings/presentation/settings_page.dart';
 import '../../settings/providers/settings_provider.dart';
 import '../../../core/services/fastapi_service.dart';
@@ -136,6 +137,7 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
           timestamp: DateTime.now(),
           author: 'Assistant',
           isStreaming: true, // Mark as streaming
+          footnotes: [], // Initialize empty footnotes list
         );
 
         setState(() {
@@ -145,17 +147,48 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
 
         // Streaming mode - show response word by word
         final responseBuffer = StringBuffer();
+        List<Map<String, String>> footnotes = [];
 
         await for (final chunk in FastApiService.sendMessageStream(messageText, conversationContext)) {
           if (mounted) {
-            responseBuffer.write(chunk);
+            // Handle content chunks
+            if (chunk.containsKey('content')) {
+              responseBuffer.write(chunk['content']);
 
-            // Update the message text with accumulated response
-            final messageIndex = _messages.indexWhere((msg) => msg.id == assistantMessageId);
-            if (messageIndex != -1) {
-              _messages[messageIndex].text = responseBuffer.toString();
-              setState(() {});
-              _scrollToBottom();
+              // Update the message text with accumulated response
+              final messageIndex = _messages.indexWhere((msg) => msg.id == assistantMessageId);
+              if (messageIndex != -1) {
+                _messages[messageIndex].text = responseBuffer.toString();
+                setState(() {});
+                _scrollToBottom();
+              }
+            }
+            // Handle footnotes
+            else if (chunk.containsKey('footnotes')) {
+              final footnotesList = chunk['footnotes'] as List<dynamic>;
+              for (final footnote in footnotesList) {
+                footnotes.add({
+                  'id': footnote['id'].toString(),
+                  'content': footnote['content'].toString(),
+                });
+              }
+
+              // Update the message footnotes
+              final messageIndex = _messages.indexWhere((msg) => msg.id == assistantMessageId);
+              if (messageIndex != -1) {
+                _messages[messageIndex].footnotes = footnotes;
+                setState(() {});
+              }
+            }
+            // Handle errors
+            else if (chunk.containsKey('error')) {
+              responseBuffer.write('Error: ${chunk['error']}');
+              final messageIndex = _messages.indexWhere((msg) => msg.id == assistantMessageId);
+              if (messageIndex != -1) {
+                _messages[messageIndex].text = responseBuffer.toString();
+                setState(() {});
+              }
+              break;
             }
           }
         }
@@ -166,6 +199,17 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
           if (messageIndex != -1) {
             _messages[messageIndex].isStreaming = false;
             setState(() {});
+
+            // Auto-trigger TTS if eager mode is enabled (after streaming completes)
+            final eagerMode = ref.read(eagerModeProvider);
+            if (eagerMode && responseBuffer.isNotEmpty) {
+              // Wait a brief moment for UI to settle, then play TTS
+              Future.delayed(const Duration(milliseconds: 300), () {
+                if (mounted && messageIndex != -1) {
+                  _playTextToSpeech(_messages[messageIndex]);
+                }
+              });
+            }
           }
         }
 
@@ -181,13 +225,17 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
         final response = await FastApiService.sendMessage(messageText, conversationContext);
 
         if (mounted) {
-          // Create assistant message with complete response
+          // Parse footnotes from the response
+          final parsedResponse = _parseFootnotesFromResponse(response);
+
+          // Create assistant message with parsed response and footnotes
           final assistantMessage = ChatMessage(
             id: 'assistant_${DateTime.now().millisecondsSinceEpoch}',
-            text: response,
+            text: parsedResponse.text,
             isOwn: false,
             timestamp: DateTime.now(),
             author: 'Assistant',
+            footnotes: parsedResponse.footnotes,
           );
 
           // Remove typing indicator and add complete response
@@ -277,6 +325,90 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
     context.addAll(recentMessages);
 
     return context;
+  }
+
+  /// Parse footnotes from response text
+  _ParsedFootnoteResponse _parseFootnotesFromResponse(String response) {
+    // First, look for footnote definitions at the end of the message
+    // Pattern: [^id]: content
+    final footnoteDefinitionPattern = RegExp(
+      r'\[\^([^\]]+)\]:\s*([^\n]+)',
+      multiLine: true,
+    );
+
+    List<Map<String, String>> footnotes = [];
+    String cleanedText = response;
+
+    // Extract all footnote definitions
+    final defMatches = footnoteDefinitionPattern.allMatches(response).toList();
+
+    for (final match in defMatches) {
+      final footnoteId = match.group(1) ?? '';
+      final footnoteContent = match.group(2) ?? '';
+
+      if (footnoteId.isNotEmpty && footnoteContent.isNotEmpty) {
+        // Extract just the number from IDs like "Zqez-1" -> "1"
+        final numberMatch = RegExp(r'(\d+)').firstMatch(footnoteId);
+        final footnoteNumber = numberMatch?.group(0) ?? footnoteId;
+
+        footnotes.add({
+          'id': footnoteNumber,
+          'content': footnoteContent.trim(),
+        });
+      }
+    }
+
+    // Remove footnote definitions from the text
+    cleanedText = cleanedText.replaceAll(footnoteDefinitionPattern, '');
+
+    // Now clean up the footnote references in the text
+    // Pattern: [^id] or variations
+    final footnoteReferencePattern = RegExp(
+      r'\[\^([^\]]+)\](?!:)',
+      multiLine: true,
+    );
+
+    // Replace footnote references with superscript numbers
+    cleanedText = cleanedText.replaceAllMapped(footnoteReferencePattern, (match) {
+      final footnoteId = match.group(1) ?? '';
+      // Extract just the number from IDs like "Zqez-1" -> "1"
+      final numberMatch = RegExp(r'(\d+)').firstMatch(footnoteId);
+      final footnoteNumber = numberMatch?.group(0) ?? '1';
+
+      // Convert to superscript
+      final superscriptNumber = _getSuperscriptNumber(footnoteNumber);
+      return '[$superscriptNumber](#footnote-$footnoteNumber)';
+    });
+
+    // Also handle any HTML-style footnotes that might exist
+    final htmlFootnotePattern = RegExp(
+      r'<sup\s*(?:id="footnote-(\d+)")?[^>]*>\s*(?:<a[^>]*>)?\s*(\d+)\s*(?:</a>)?\s*</sup>',
+      multiLine: true,
+      dotAll: true,
+    );
+
+    cleanedText = cleanedText.replaceAllMapped(htmlFootnotePattern, (match) {
+      final footnoteNumber = match.group(2) ?? match.group(1) ?? '1';
+      final superscriptNumber = _getSuperscriptNumber(footnoteNumber);
+      return '[$superscriptNumber](#footnote-$footnoteNumber)';
+    });
+
+    return _ParsedFootnoteResponse(
+      text: cleanedText.trim(),
+      footnotes: footnotes,
+    );
+  }
+
+  /// Convert regular number to Unicode superscript
+  String _getSuperscriptNumber(String number) {
+    const superscriptMap = {
+      '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴',
+      '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹',
+    };
+
+    return number.split('').map((digit) =>
+      superscriptMap[digit] ?? digit
+    ).join();
   }
 
   String _summarizeOlderContext(List<Map<String, String>> olderMessages) {
@@ -626,6 +758,29 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
                               ),
                             ),
                 ),
+                // Footnotes accordion (only for assistant messages)
+                if (!message.isOwn && message.footnotes.isNotEmpty)
+                  FootnotesAccordion(
+                    footnotes: message.footnotes,
+                    styleSheet: MarkdownStyleSheet(
+                      p: TextStyle(
+                        color: appColors.messageText,
+                        fontSize: 12,
+                        height: 1.4,
+                      ),
+                      code: TextStyle(
+                        backgroundColor: appColors.muted.withValues(alpha: 0.3),
+                        color: appColors.messageText,
+                        fontFamily: 'monospace',
+                        fontSize: 11,
+                      ),
+                      strong: TextStyle(
+                        color: appColors.messageText,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
                 const SizedBox(height: 4),
                 Row(
                   mainAxisAlignment: message.isOwn ? MainAxisAlignment.end : MainAxisAlignment.spaceBetween,
@@ -811,24 +966,27 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
                           const SizedBox(width: 4),
 
                           // Text-to-Speech button (headphones icon with play/pause/stop)
+                          // Disable during streaming
                           Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               GestureDetector(
-                                onTap: () {
-                                  // Prevent multiple taps while loading
-                                  if (!_isAudioLoading) {
+                                onTap: message.isStreaming ? null : () {
+                                  // Prevent multiple taps while loading or streaming
+                                  if (!_isAudioLoading && !message.isStreaming) {
                                     _playTextToSpeech(message);
                                   }
                                 },
                                 child: Container(
                                   padding: const EdgeInsets.all(4),
                                   decoration: BoxDecoration(
-                                    color: (_currentPlayingMessageId == message.id || (_isAudioLoading && _currentPlayingMessageId == message.id))
-                                        ? appColors.accent.withValues(alpha: 0.2)
-                                        : appColors.input.withValues(alpha: 0.1),
+                                    color: message.isStreaming
+                                        ? appColors.input.withValues(alpha: 0.05) // Disabled appearance during streaming
+                                        : (_currentPlayingMessageId == message.id || (_isAudioLoading && _currentPlayingMessageId == message.id))
+                                            ? appColors.accent.withValues(alpha: 0.2)
+                                            : appColors.input.withValues(alpha: 0.1),
                                     borderRadius: BorderRadius.circular(4),
-                                    border: (_currentPlayingMessageId == message.id || (_isAudioLoading && _currentPlayingMessageId == message.id))
+                                    border: (_currentPlayingMessageId == message.id || (_isAudioLoading && _currentPlayingMessageId == message.id)) && !message.isStreaming
                                         ? Border.all(color: appColors.accent.withValues(alpha: 0.3), width: 1)
                                         : null,
                                   ),
@@ -846,9 +1004,11 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
                                               ? Icons.pause
                                               : Icons.play_arrow,
                                           size: 12,
-                                          color: _currentPlayingMessageId == message.id
-                                              ? appColors.accent
-                                              : appColors.mutedForeground,
+                                          color: message.isStreaming
+                                              ? appColors.mutedForeground.withValues(alpha: 0.3) // Dimmed during streaming
+                                              : _currentPlayingMessageId == message.id
+                                                  ? appColors.accent
+                                                  : appColors.mutedForeground,
                                         ),
                                 ),
                               ),
@@ -1015,6 +1175,11 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
   void _playTextToSpeech(ChatMessage message) async {
     if (!mounted) return;
 
+    // Don't play TTS if message is still streaming
+    if (message.isStreaming) {
+      return;
+    }
+
     // If this message is already playing, pause it
     if (_currentPlayingMessageId == message.id && _isAudioPlaying) {
       _pauseAudio();
@@ -1030,6 +1195,12 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
     // Stop any currently playing audio
     _stopAudio();
 
+    // Set loading state
+    setState(() {
+      _isAudioLoading = true;
+      _currentPlayingMessageId = message.id;
+    });
+
     try {
       // Clean text for TTS (remove think tags, markdown, special characters)
       final cleanedText = TtsTextCleaner.cleanForTts(message.text);
@@ -1037,6 +1208,10 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
       // Skip TTS if cleaned text is empty
       if (cleanedText.isEmpty) {
         if (mounted) {
+          setState(() {
+            _isAudioLoading = false;
+            _currentPlayingMessageId = null;
+          });
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
@@ -1105,7 +1280,10 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
       if (response.statusCode == 200 && mounted) {
         _log.info('TTS response received: ${response.bodyBytes.length} bytes');
 
-        // Clear loading snackbar
+        // Clear loading state and snackbar
+        setState(() {
+          _isAudioLoading = false;
+        });
         ScaffoldMessenger.of(context).clearSnackBars();
 
         // Play audio using web audio API
@@ -1160,6 +1338,10 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
       }
     } catch (e) {
       if (mounted) {
+        setState(() {
+          _isAudioLoading = false;
+          _currentPlayingMessageId = null;
+        });
         ScaffoldMessenger.of(context).clearSnackBars();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -1202,6 +1384,7 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
       setState(() {
         _currentPlayingMessageId = null;
         _isAudioPlaying = false;
+        _isAudioLoading = false;
       });
     }
   }
@@ -1448,6 +1631,7 @@ class ChatMessage {
   final String author;
   bool? isLiked; // null = no rating, true = liked, false = disliked
   bool isStreaming; // Track if this message is currently being streamed
+  List<Map<String, String>> footnotes; // List of footnotes with id and content (mutable for streaming)
 
   ChatMessage({
     required this.id,
@@ -1457,6 +1641,18 @@ class ChatMessage {
     required this.author,
     this.isLiked,
     this.isStreaming = false,
+    List<Map<String, String>>? footnotes,
+  }) : footnotes = footnotes ?? [];
+}
+
+// Helper class for parsing footnotes from response
+class _ParsedFootnoteResponse {
+  final String text;
+  final List<Map<String, String>> footnotes;
+
+  _ParsedFootnoteResponse({
+    required this.text,
+    required this.footnotes,
   });
 }
 

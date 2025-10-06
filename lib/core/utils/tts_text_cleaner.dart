@@ -7,13 +7,16 @@ class TtsTextCleaner {
     // 1. Remove <think>...</think> tags and their content
     cleaned = _removeThinkTags(cleaned);
 
-    // 2. Remove markdown formatting
+    // 2. Remove references section (everything after ": Policy Number:")
+    cleaned = _removeReferences(cleaned);
+
+    // 3. Remove markdown formatting
     cleaned = _removeMarkdownFormatting(cleaned);
 
-    // 3. Clean up special characters
+    // 4. Clean up special characters
     cleaned = _cleanSpecialCharacters(cleaned);
 
-    // 4. Normalize whitespace
+    // 5. Normalize whitespace
     cleaned = _normalizeWhitespace(cleaned);
 
     return cleaned.trim();
@@ -27,6 +30,17 @@ class TtsTextCleaner {
       dotAll: true,
     );
     return text.replaceAll(thinkPattern, '');
+  }
+
+  /// Remove references section (everything after newline + ": Policy Number:")
+  /// This ensures we don't accidentally remove colons in normal sentences
+  static String _removeReferences(String text) {
+    final referencePattern = RegExp(
+      r'\n*:\s*Policy Number:.*$',
+      multiLine: true,
+      dotAll: true,
+    );
+    return text.replaceAll(referencePattern, '');
   }
 
   /// Remove markdown formatting but keep the text content

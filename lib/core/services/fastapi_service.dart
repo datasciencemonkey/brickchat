@@ -45,7 +45,8 @@ class FastApiService {
 
   /// Sends a message to the FastAPI backend and returns streaming response
   /// Uses streaming mode (stream=true) for real-time token-by-token responses
-  static Stream<String> sendMessageStream(String message, [List<Map<String, String>>? conversationHistory]) async* {
+  /// Returns a stream of maps containing either 'content' or 'footnotes'
+  static Stream<Map<String, dynamic>> sendMessageStream(String message, [List<Map<String, String>>? conversationHistory]) async* {
     try {
       final url = Uri.parse('$baseUrl/api/chat/send');
 
@@ -77,12 +78,14 @@ class FastApiService {
                 final data = json.decode(jsonStr);
 
                 if (data['error'] != null) {
-                  yield 'Error: ${data['error']}';
+                  yield {'error': data['error']};
                   return;
                 } else if (data['done'] == true) {
                   return;
                 } else if (data['content'] != null) {
-                  yield data['content'];
+                  yield {'content': data['content']};
+                } else if (data['footnotes'] != null) {
+                  yield {'footnotes': data['footnotes']};
                 }
               } catch (e) {
                 // Skip malformed chunks
@@ -92,10 +95,10 @@ class FastApiService {
           }
         }
       } else {
-        yield 'Error: ${streamedResponse.statusCode}';
+        yield {'error': 'Error: ${streamedResponse.statusCode}'};
       }
     } catch (e) {
-      yield 'Error connecting to backend: $e';
+      yield {'error': 'Error connecting to backend: $e'};
     }
   }
 
