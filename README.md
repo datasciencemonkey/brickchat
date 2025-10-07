@@ -19,6 +19,7 @@
 ### 🔊 **Text-to-Speech (TTS) Features**
 - **Dual Provider Support**: Choose between Replicate (Kokoro-82M) or Deepgram (Aura) for optimal voice quality
 - **18+ Voice Options**: Select from diverse voices including male and female options
+- **Streaming TTS**: Real-time audio playback as responses are generated (when streaming enabled)
 - **Eager Mode**: Automatically play TTS after AI responses complete (requires streaming to be disabled)
 - **Manual TTS Control**: Click the speaker icon on any message to play audio
 - **Provider Fallback**: Automatic fallback between TTS providers if one fails
@@ -31,10 +32,12 @@
 - **Animated Elements**: Smooth transitions, typing indicators, and visual feedback
 
 ### 💬 **Rich Messaging Experience**
-- **Markdown Support**: Format messages with bold, italic, code blocks, and links
+- **Markdown Support**: Format messages with bold, italic, code blocks, links, and footnotes
 - **Message Actions**: Like/dislike, copy to clipboard, and text-to-speech playback
 - **Typing Indicators**: Animated "Assistant is working..." with engaging status messages
 - **Message History**: Scrollable conversation with timestamps and author labels
+- **Collapsible Reasoning**: AI reasoning displayed in expandable sections for transparency
+- **Footnotes Support**: Interactive footnotes with hover tooltips and expandable content
 
 ### ⚙️ **Customizable Settings**
 - **Streaming Toggle**: Enable/disable real-time response streaming (experimental)
