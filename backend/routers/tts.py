@@ -5,25 +5,95 @@ import replicate
 import httpx
 import os
 from dotenv import load_dotenv
+from functools import lru_cache
+from openai import OpenAI
+import logging
+
 load_dotenv()
 
 router = APIRouter(prefix="/api/tts", tags=["text-to-speech"])
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 # Get configuration from environment
 DEEPGRAM_API_KEY = os.environ.get('DEEPGRAM_TOKEN', '')
 REPLICATE_API_TOKEN = os.environ.get('REPLICATE_API_TOKEN', '')
 
+# Databricks configuration for LLM text cleaning
+DATABRICKS_TOKEN = os.environ.get('DATABRICKS_TOKEN', '')
+DATABRICKS_BASE_URL = os.environ.get('DATABRICKS_BASE_URL', 'https://adb-984752964297111.11.azuredatabricks.net/serving-endpoints')
+DATABRICKS_LLM_MODEL = os.environ.get('DATABRICKS_LLM_MODEL', 'databricks-gemma-3-12b')
+
 # Initialize clients
 deepgram = DeepgramClient(DEEPGRAM_API_KEY) if DEEPGRAM_API_KEY else None
+
+# Initialize Databricks client for text cleaning
+databricks_client = OpenAI(
+    api_key=DATABRICKS_TOKEN,
+    base_url=DATABRICKS_BASE_URL
+) if DATABRICKS_TOKEN else None
+
+
+@lru_cache(maxsize=100)
+def clean_text_for_tts(text: str) -> str:
+    """
+    Use LLM to clean text for TTS by removing footnotes, HTML tags, and formatting.
+    Results are cached with LRU (Least Recently Used) strategy for efficiency.
+    """
+    if not databricks_client:
+        logger.warning("Databricks client not configured, returning original text")
+        return text
+
+    try:
+        prompt = """Act like a human who is editing this text to be optimized for listening by other humans.
+Clean up and remove all footnotes, references, HTML tags, and markdown formatting.
+Don't change the core subject or meaning, just make it natural for text-to-speech.
+Return only the cleaned text without any explanation.
+
+Text to clean:
+{}""".format(text)
+
+        # Call Databricks LLM with low temperature for consistent cleaning
+        response = databricks_client.chat.completions.create(
+            model=DATABRICKS_LLM_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=2000,
+            temperature=0.3
+        )
+
+        cleaned_text = response.choices[0].message.content.strip()
+
+        # Log the cleaning for debugging
+        logger.info(f"LLM cleaned text from {len(text)} to {len(cleaned_text)} characters")
+        logger.debug(f"Original text (first 100 chars): {text[:100]}...")
+        logger.debug(f"Cleaned text (first 100 chars): {cleaned_text[:100]}...")
+
+        return cleaned_text
+
+    except Exception as e:
+        logger.error(f"LLM text cleaning failed: {str(e)}, using original text")
+        return text
 
 
 @router.post("/speak")
 async def text_to_speech(request: dict):
     """Convert text to speech using selected provider or fallback logic"""
     try:
-        text = request.get("text", "").strip()
-        if not text:
+        raw_text = request.get("text", "").strip()
+        if not raw_text:
             raise HTTPException(status_code=400, detail="Text is required")
+
+        # Clean text using LLM for better TTS output
+        print(f"===== TTS RAW TEXT (RECEIVED FROM CLIENT) =====")
+        print(raw_text)
+        print(f"=================================================")
+
+        text = clean_text_for_tts(raw_text)
+
+        print(f"===== TTS CLEANED TEXT (AFTER LLM CLEANING) =====")
+        print(text)
+        print(f"==================================================")
 
         # Get provider preference from request (defaults to replicate)
         preferred_provider = request.get("provider", "replicate").lower()

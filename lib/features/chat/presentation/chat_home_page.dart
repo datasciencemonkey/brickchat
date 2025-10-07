@@ -20,7 +20,7 @@ import '../../../shared/widgets/footnotes_accordion.dart';
 import '../../settings/presentation/settings_page.dart';
 import '../../settings/providers/settings_provider.dart';
 import '../../../core/services/fastapi_service.dart';
-import '../../../core/utils/tts_text_cleaner.dart';
+// Removed TTS text cleaner - now handled by backend LLM
 
 class ChatHomePage extends ConsumerStatefulWidget {
   const ChatHomePage({super.key});
@@ -1202,21 +1202,16 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
     });
 
     try {
-      // Log the raw text before cleaning
-      _log.info('===== TTS RAW TEXT (BEFORE CLEANING) =====');
+      // Log the raw text being sent to backend for LLM cleaning
+      _log.info('===== TTS RAW TEXT (SENDING TO BACKEND) =====');
       _log.info(message.text);
-      _log.info('==========================================');
+      _log.info('==============================================');
 
-      // Clean text for TTS (remove think tags, markdown, special characters)
-      final cleanedText = TtsTextCleaner.cleanForTts(message.text);
+      // Send raw text to backend - LLM will clean it there
+      final textToSend = message.text;
 
-      // Log the cleaned text being sent to TTS
-      _log.info('===== TTS CLEANED TEXT (SENT TO TTS) =====');
-      _log.info(cleanedText);
-      _log.info('===========================================');
-
-      // Skip TTS if cleaned text is empty
-      if (cleanedText.isEmpty) {
+      // Skip TTS if text is empty
+      if (textToSend.isEmpty) {
         if (mounted) {
           setState(() {
             _isAudioLoading = false;
@@ -1282,7 +1277,7 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
 
       // Call backend TTS API with cleaned text
       final response = await FastApiService.requestTts(
-        cleanedText,
+        textToSend,  // Send raw text - backend will clean it using LLM
         provider: ttsProvider,
         voice: ttsVoice,
       );
