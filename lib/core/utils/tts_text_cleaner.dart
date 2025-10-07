@@ -7,19 +7,22 @@ class TtsTextCleaner {
     // 1. Remove <think>...</think> tags and their content
     cleaned = _removeThinkTags(cleaned);
 
-    // 2. Remove footnote references (superscript numbers like ¹²³⁴⁵⁶⁷⁸⁹⁰)
+    // 2. FIRST remove HTML footnote references completely (like <sup><a href="#footnote-1">1</a></sup>)
+    cleaned = _removeHtmlFootnotes(cleaned);
+
+    // 3. Then remove any remaining footnote references (superscript numbers like ¹²³⁴⁵⁶⁷⁸⁹⁰)
     cleaned = _removeFootnoteReferences(cleaned);
 
-    // 3. Remove references section (everything after ": Policy Number:")
+    // 4. Remove references section (everything after ": Policy Number:")
     cleaned = _removeReferences(cleaned);
 
-    // 4. Remove markdown formatting
+    // 5. Remove markdown formatting
     cleaned = _removeMarkdownFormatting(cleaned);
 
-    // 5. Clean up special characters
+    // 6. Clean up special characters
     cleaned = _cleanSpecialCharacters(cleaned);
 
-    // 6. Normalize whitespace
+    // 7. Normalize whitespace
     cleaned = _normalizeWhitespace(cleaned);
 
     return cleaned.trim();
@@ -33,6 +36,27 @@ class TtsTextCleaner {
       dotAll: true,
     );
     return text.replaceAll(thinkPattern, '');
+  }
+
+  /// Remove HTML footnote references completely
+  /// Removes patterns like <sup><a href="#footnote-1">1</a></sup> and similar
+  static String _removeHtmlFootnotes(String text) {
+    String cleaned = text;
+
+    // Remove <sup>...</sup> tags and ALL their content (including nested tags)
+    // This will catch <sup><a href="#footnote-1">1</a></sup> and similar patterns
+    cleaned = cleaned.replaceAll(
+      RegExp(r'<sup[^>]*>.*?</sup>', multiLine: true, dotAll: true),
+      ''
+    );
+
+    // Also remove any standalone <a> tags pointing to footnotes
+    cleaned = cleaned.replaceAll(
+      RegExp(r'<a\s+href="#footnote-[^"]*"[^>]*>.*?</a>', multiLine: true, dotAll: true),
+      ''
+    );
+
+    return cleaned;
   }
 
   /// Remove footnote references (entire link patterns with superscript numbers)
