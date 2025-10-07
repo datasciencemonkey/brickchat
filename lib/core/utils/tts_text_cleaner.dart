@@ -7,16 +7,19 @@ class TtsTextCleaner {
     // 1. Remove <think>...</think> tags and their content
     cleaned = _removeThinkTags(cleaned);
 
-    // 2. Remove references section (everything after ": Policy Number:")
+    // 2. Remove footnote references (superscript numbers like ¹²³⁴⁵⁶⁷⁸⁹⁰)
+    cleaned = _removeFootnoteReferences(cleaned);
+
+    // 3. Remove references section (everything after ": Policy Number:")
     cleaned = _removeReferences(cleaned);
 
-    // 3. Remove markdown formatting
+    // 4. Remove markdown formatting
     cleaned = _removeMarkdownFormatting(cleaned);
 
-    // 4. Clean up special characters
+    // 5. Clean up special characters
     cleaned = _cleanSpecialCharacters(cleaned);
 
-    // 5. Normalize whitespace
+    // 6. Normalize whitespace
     cleaned = _normalizeWhitespace(cleaned);
 
     return cleaned.trim();
@@ -30,6 +33,20 @@ class TtsTextCleaner {
       dotAll: true,
     );
     return text.replaceAll(thinkPattern, '');
+  }
+
+  /// Remove footnote references (superscript Unicode characters)
+  static String _removeFootnoteReferences(String text) {
+    // Remove Unicode superscript characters (¹²³⁴⁵⁶⁷⁸⁹⁰)
+    String cleaned = text.replaceAll(RegExp(r'[⁰¹²³⁴⁵⁶⁷⁸⁹]+'), '');
+
+    // Also remove common footnote patterns like [1], [2], etc.
+    cleaned = cleaned.replaceAll(RegExp(r'\[\d+\]'), '');
+
+    // Remove footnote patterns with superscript-like notation (e.g., ^1, ^2)
+    cleaned = cleaned.replaceAll(RegExp(r'\^\d+'), '');
+
+    return cleaned;
   }
 
   /// Remove references section (everything after newline + ": Policy Number:")
