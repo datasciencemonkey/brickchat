@@ -39,6 +39,7 @@ class TtsTextCleaner {
   static String _removeFootnoteReferences(String text) {
     // Remove markdown-style footnote links like [¹](#footnote-1), [²](#footnote-2), etc.
     // This pattern matches [superscript](#footnote-number)
+    // print(text);
     String cleaned = text.replaceAll(
       RegExp(r'\[[⁰¹²³⁴⁵⁶⁷⁸⁹]+\]\(#footnote-\d+\)'),
       ''
