@@ -19,6 +19,8 @@
 ### 🔊 **Text-to-Speech (TTS) Features**
 - **Dual Provider Support**: Choose between Replicate (Kokoro-82M) or Deepgram (Aura) for optimal voice quality
 - **18+ Voice Options**: Select from diverse voices including male and female options
+- **AI-Powered Text Cleaning**: LLM intelligently removes footnotes, HTML tags, and formatting for natural speech
+- **Smart Caching**: LRU cache stores 100 cleaned texts to reduce API calls and improve response time
 - **Streaming TTS**: Real-time audio playback as responses are generated (when streaming enabled)
 - **Eager Mode**: Automatically play TTS after AI responses (works with both streaming and non-streaming modes)
 - **Manual TTS Control**: Click the speaker icon on any message to play audio
@@ -51,6 +53,8 @@
 - **Cross-Platform**: Works across iOS, Android, Web browsers, and Desktop (Windows, macOS, Linux)
 - **WASM Compatible**: Modern web technology for optimal performance
 - **Clean Architecture**: Built with Flutter and Riverpod for maintainable code
+- **LLM-Enhanced TTS**: Backend uses Databricks LLM to intelligently clean text for optimal speech output
+- **Efficient Caching**: LRU cache reduces API calls while maintaining fresh, context-aware text processing
 - **Error Handling**: Graceful error management with user-friendly messages
 
 ## 🎯 **Perfect For**
@@ -78,6 +82,14 @@ Access the settings panel to customize your text-to-speech experience:
 2. **Voice Selection**: Pick from 18+ voices including male and female options
 3. **Eager Mode**: Enable automatic TTS playback after responses complete
 4. **Manual Control**: Click the speaker icon on any message for on-demand audio
+
+### **AI-Powered TTS Processing**
+BrickChat uses advanced LLM technology to ensure optimal text-to-speech output:
+
+- **Intelligent Text Cleaning**: Backend LLM automatically removes footnotes, HTML tags, and formatting artifacts
+- **Context-Aware Processing**: The AI understands context and preserves meaning while optimizing for natural speech
+- **Efficient Caching**: LRU cache with 100-item capacity reduces API calls for frequently spoken content
+- **Seamless Integration**: All processing happens server-side - no client-side complexity
 
 ## 🚀 **Getting Started**
 Simply type your message or click the microphone to start speaking. The AI assistant will respond intelligently based on your conversation context, making it feel like chatting with a knowledgeable colleague.
