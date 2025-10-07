@@ -165,7 +165,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     final theme = Theme.of(context);
     final appColors = context.appColors;
     final streamResults = ref.streamResults;
-    final eagerMode = ref.eagerMode;
 
     return Row(
       children: [
@@ -194,7 +193,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         const SizedBox(width: 16),
         Switch(
           value: streamResults,
-          onChanged: eagerMode ? null : (value) {
+          onChanged: (value) {
             ref.streamResultsNotifier.setStreamResults(value);
           },
           activeTrackColor: theme.colorScheme.primary,
@@ -224,10 +223,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               const SizedBox(height: 4),
               Text(
                 eagerMode
-                    ? 'Automatically play TTS after response completes'
-                    : streamResults
-                        ? 'Turn off streaming to enable eager mode'
-                        : 'Manually trigger TTS playback',
+                    ? streamResults
+                        ? 'Automatically play TTS as response streams'
+                        : 'Automatically play TTS after response completes'
+                    : 'Manually trigger TTS playback',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: appColors.mutedForeground,
                 ),
@@ -238,7 +237,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         const SizedBox(width: 16),
         Switch(
           value: eagerMode,
-          onChanged: streamResults ? null : (value) {
+          onChanged: (value) {
             ref.eagerModeNotifier.setEagerMode(value);
           },
           activeTrackColor: theme.colorScheme.primary,

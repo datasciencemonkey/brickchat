@@ -20,7 +20,7 @@
 - **Dual Provider Support**: Choose between Replicate (Kokoro-82M) or Deepgram (Aura) for optimal voice quality
 - **18+ Voice Options**: Select from diverse voices including male and female options
 - **Streaming TTS**: Real-time audio playback as responses are generated (when streaming enabled)
-- **Eager Mode**: Automatically play TTS after AI responses complete (requires streaming to be disabled)
+- **Eager Mode**: Automatically play TTS after AI responses (works with both streaming and non-streaming modes)
 - **Manual TTS Control**: Click the speaker icon on any message to play audio
 - **Provider Fallback**: Automatic fallback between TTS providers if one fails
 - **Voice Persistence**: Your voice and provider preferences are saved across sessions
@@ -41,7 +41,7 @@
 
 ### ⚙️ **Customizable Settings**
 - **Streaming Toggle**: Enable/disable real-time response streaming (experimental)
-- **Eager Mode**: Automatically play text-to-speech after responses complete
+- **Eager Mode**: Automatically play text-to-speech (works with or without streaming)
 - **TTS Provider Selection**: Choose between Replicate (Kokoro-82M) or Deepgram (Aura) voices
 - **Voice Customization**: Select from 18+ voices across different providers
 - **Theme Persistence**: Your theme preference is remembered across sessions
@@ -61,13 +61,15 @@
 
 ## ⚙️ **Response Modes & TTS Settings**
 
-### **Streaming vs Eager Mode**
-BrickChat offers two distinct response modes that affect how you receive and interact with AI responses:
+### **Streaming and Eager Mode**
+BrickChat offers flexible response modes that can work independently or together:
 
 - **Streaming Mode** (Experimental): Responses appear word-by-word as they are generated, providing real-time feedback
-- **Eager Mode**: Automatically plays text-to-speech after the complete response is ready
+- **Eager Mode**: Automatically plays text-to-speech:
+  - When streaming is enabled: TTS plays after the streaming response completes
+  - When streaming is disabled: TTS plays after the full response is received
 
-**Important**: These modes are mutually exclusive - enabling streaming disables eager mode, and vice versa. This ensures optimal performance and user experience.
+Both modes can now be enabled simultaneously for the ultimate interactive experience!
 
 ### **TTS Configuration**
 Access the settings panel to customize your text-to-speech experience:

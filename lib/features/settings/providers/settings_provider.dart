@@ -128,19 +128,12 @@ class StreamResultsNotifier extends StateNotifier<bool> {
     await setStreamResults(!state);
   }
 
-  /// Set the stream results setting - automatically disables eager mode if enabling streaming
+  /// Set the stream results setting
   Future<void> setStreamResults(bool enabled) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(SettingsKeys.streamResults, enabled);
       state = enabled;
-
-      // If enabling streaming, disable eager mode and notify the provider
-      if (enabled) {
-        await prefs.setBool(SettingsKeys.eagerMode, false);
-        // Force the eager mode provider to update its state
-        _ref.read(eagerModeProvider.notifier).state = false;
-      }
     } catch (e) {
       // If saving fails, revert to previous state
       // The state doesn't change, so UI remains consistent
@@ -239,20 +232,9 @@ class EagerModeNotifier extends StateNotifier<bool> {
     await setEagerMode(!state);
   }
 
-  /// Set eager mode - automatically disables streaming if enabling eager mode
+  /// Set eager mode
   Future<void> setEagerMode(bool enabled) async {
     try {
-      // If enabling eager mode, ensure streaming is disabled
-      if (enabled) {
-        final streamEnabled = _ref.read(streamResultsProvider);
-        if (streamEnabled) {
-          // Disable streaming in SharedPreferences and update the provider state
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setBool(SettingsKeys.streamResults, false);
-          _ref.read(streamResultsProvider.notifier).state = false;
-        }
-      }
-
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(SettingsKeys.eagerMode, enabled);
       state = enabled;
