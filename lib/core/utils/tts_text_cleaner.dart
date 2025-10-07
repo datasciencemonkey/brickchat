@@ -35,16 +35,27 @@ class TtsTextCleaner {
     return text.replaceAll(thinkPattern, '');
   }
 
-  /// Remove footnote references (superscript Unicode characters)
+  /// Remove footnote references (entire link patterns with superscript numbers)
   static String _removeFootnoteReferences(String text) {
-    // Remove Unicode superscript characters (¹²³⁴⁵⁶⁷⁸⁹⁰)
-    String cleaned = text.replaceAll(RegExp(r'[⁰¹²³⁴⁵⁶⁷⁸⁹]+'), '');
+    // Remove markdown-style footnote links like [¹](#footnote-1), [²](#footnote-2), etc.
+    // This pattern matches [superscript](#footnote-number)
+    String cleaned = text.replaceAll(
+      RegExp(r'\[[⁰¹²³⁴⁵⁶⁷⁸⁹]+\]\(#footnote-\d+\)'),
+      ''
+    );
 
-    // Also remove common footnote patterns like [1], [2], etc.
+    // Also remove any remaining standalone superscript characters
+    cleaned = cleaned.replaceAll(RegExp(r'[⁰¹²³⁴⁵⁶⁷⁸⁹]+'), '');
+
+    // Remove common footnote patterns like [1], [2], etc.
     cleaned = cleaned.replaceAll(RegExp(r'\[\d+\]'), '');
 
     // Remove footnote patterns with superscript-like notation (e.g., ^1, ^2)
     cleaned = cleaned.replaceAll(RegExp(r'\^\d+'), '');
+
+    // Remove any markdown links that might be footnote references
+    // Pattern: [any text](#footnote-any)
+    cleaned = cleaned.replaceAll(RegExp(r'\[[^\]]*\]\(#footnote-[^\)]*\)'), '');
 
     return cleaned;
   }
