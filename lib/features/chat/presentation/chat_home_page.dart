@@ -1202,8 +1202,18 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
     });
 
     try {
+      // Log the raw text before cleaning
+      print('===== TTS RAW TEXT (BEFORE CLEANING) =====');
+      print(message.text);
+      print('==========================================');
+
       // Clean text for TTS (remove think tags, markdown, special characters)
       final cleanedText = TtsTextCleaner.cleanForTts(message.text);
+
+      // Log the cleaned text being sent to TTS
+      print('===== TTS CLEANED TEXT (SENT TO TTS) =====');
+      print(cleanedText);
+      print('===========================================');
 
       // Skip TTS if cleaned text is empty
       if (cleanedText.isEmpty) {
