@@ -61,26 +61,21 @@ class TtsTextCleaner {
 
   /// Remove footnote references (entire link patterns with superscript numbers)
   static String _removeFootnoteReferences(String text) {
-    // Remove markdown-style footnote links like [¹](#footnote-1), [²](#footnote-2), etc.
-    // This pattern matches [superscript](#footnote-number)
-    // print(text);
+    // First, remove any markdown links that point to footnotes
+    // This handles [¹](#footnote-1), [1](#footnote-1), [any text](#footnote-X)
     String cleaned = text.replaceAll(
-      RegExp(r'\[[⁰¹²³⁴⁵⁶⁷⁸⁹]+\]\(#footnote-\d+\)'),
+      RegExp(r'\[[^\]]*?\]\(#footnote-[^\)]*?\)'),
       ''
     );
 
-    // Also remove any remaining standalone superscript characters
+    // Remove standalone superscript characters
     cleaned = cleaned.replaceAll(RegExp(r'[⁰¹²³⁴⁵⁶⁷⁸⁹]+'), '');
 
-    // Remove common footnote patterns like [1], [2], etc.
+    // Remove bracketed numbers like [1], [2], etc.
     cleaned = cleaned.replaceAll(RegExp(r'\[\d+\]'), '');
 
     // Remove footnote patterns with superscript-like notation (e.g., ^1, ^2)
     cleaned = cleaned.replaceAll(RegExp(r'\^\d+'), '');
-
-    // Remove any markdown links that might be footnote references
-    // Pattern: [any text](#footnote-any)
-    cleaned = cleaned.replaceAll(RegExp(r'\[[^\]]*\]\(#footnote-[^\)]*\)'), '');
 
     return cleaned;
   }
@@ -117,7 +112,11 @@ class TtsTextCleaner {
     // Remove code blocks (```...```)
     cleaned = cleaned.replaceAll(RegExp(r'```[\s\S]*?```'), '');
 
-    // Remove links but keep text [text](url)
+    // SPECIAL: First remove footnote links completely (don't keep the text)
+    // This prevents [1](#footnote-1) from becoming just "1"
+    cleaned = cleaned.replaceAll(RegExp(r'\[[^\]]*?\]\(#footnote-[^\)]*?\)'), '');
+
+    // Then remove other links but keep text [text](url)
     cleaned = cleaned.replaceAll(RegExp(r'\[([^\]]+)\]\([^\)]+\)'), r'$1');
 
     // Remove images ![alt](url)
