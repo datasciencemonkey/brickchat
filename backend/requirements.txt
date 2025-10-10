@@ -25,6 +25,7 @@ multidict==6.6.4
 mypy-extensions==1.1.0
 openai==1.109.0
 packaging==25.0
+psycopg2-binary==2.9.10
 replicate==1.5.4
 propcache==0.3.2
 pydantic==2.11.9

@@ -37,6 +37,8 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
   final ScrollController _scrollController = ScrollController();
   final FocusNode _messageInputFocus = FocusNode();
   bool _showSpeechToText = false;
+  String? _currentThreadId; // Track current thread ID from backend
+  final String _userId = "dev_user"; // Default user ID
 
   // Audio player state
   Audio? _currentAudio;
@@ -149,10 +151,34 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
         final responseBuffer = StringBuffer();
         List<Map<String, String>> footnotes = [];
 
-        await for (final chunk in FastApiService.sendMessageStream(messageText, conversationContext)) {
+        await for (final chunk in FastApiService.sendMessageStream(
+          messageText,
+          conversationHistory: conversationContext,
+          threadId: _currentThreadId,
+          userId: _userId,
+        )) {
           if (mounted) {
+            // Handle metadata (thread_id, message_ids)
+            if (chunk.containsKey('metadata')) {
+              final metadata = chunk['metadata'] as Map<String, dynamic>;
+              _currentThreadId = metadata['thread_id'];
+              // Update user message with backend message ID
+              final userMsgIndex = _messages.indexWhere((msg) => msg.id == message.id);
+              if (userMsgIndex != -1) {
+                _messages[userMsgIndex].threadId = _currentThreadId;
+                _messages[userMsgIndex].messageId = metadata['user_message_id'];
+              }
+            }
+            // Handle assistant message ID
+            else if (chunk.containsKey('assistant_message_id')) {
+              final assistantMsgIndex = _messages.indexWhere((msg) => msg.id == assistantMessageId);
+              if (assistantMsgIndex != -1) {
+                _messages[assistantMsgIndex].threadId = _currentThreadId;
+                _messages[assistantMsgIndex].messageId = chunk['assistant_message_id'];
+              }
+            }
             // Handle content chunks
-            if (chunk.containsKey('content')) {
+            else if (chunk.containsKey('content')) {
               responseBuffer.write(chunk['content']);
 
               // Update the message text with accumulated response
@@ -222,11 +248,42 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
         }
       } else {
         // Non-streaming mode - get complete response first
-        final response = await FastApiService.sendMessage(messageText, conversationContext);
+        final response = await FastApiService.sendMessage(
+          messageText,
+          conversationHistory: conversationContext,
+          threadId: _currentThreadId,
+          userId: _userId,
+        );
 
         if (mounted) {
+          // Check for errors
+          if (response.containsKey('error')) {
+            // Handle error
+            setState(() {
+              _messages.removeWhere((msg) => msg.id.startsWith('typing_'));
+              _messages.add(ChatMessage(
+                id: 'error_${DateTime.now().millisecondsSinceEpoch}',
+                text: response['error'],
+                isOwn: false,
+                timestamp: DateTime.now(),
+                author: 'System',
+              ));
+            });
+            return;
+          }
+
+          // Update thread ID and message IDs
+          _currentThreadId = response['thread_id'];
+
+          // Update user message with backend message ID
+          final userMsgIndex = _messages.indexWhere((msg) => msg.id == message.id);
+          if (userMsgIndex != -1) {
+            _messages[userMsgIndex].threadId = _currentThreadId;
+            _messages[userMsgIndex].messageId = response['user_message_id'];
+          }
+
           // Parse footnotes from the response
-          final parsedResponse = _parseFootnotesFromResponse(response);
+          final parsedResponse = _parseFootnotesFromResponse(response['response'] ?? '');
 
           // Create assistant message with parsed response and footnotes
           final assistantMessage = ChatMessage(
@@ -236,6 +293,8 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
             timestamp: DateTime.now(),
             author: 'Assistant',
             footnotes: parsedResponse.footnotes,
+            threadId: _currentThreadId,
+            messageId: response['assistant_message_id'],
           );
 
           // Remove typing indicator and add complete response
@@ -811,11 +870,13 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
                         children: [
                           // Like button (thumbs up)
                           GestureDetector(
-                            onTap: () {
+                            onTap: () async {
+                              final newLikeState = message.isLiked == true ? null : true;
                               setState(() {
-                                message.isLiked = message.isLiked == true ? null : true;
+                                message.isLiked = newLikeState;
                               });
-                              _showFeedbackSnackBar(true, message.isLiked == true);
+                              await _updateMessageFeedback(message, newLikeState);
+                              _showFeedbackSnackBar(true, newLikeState == true);
                             },
                             child: Container(
                               padding: const EdgeInsets.all(4),
@@ -841,11 +902,13 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
 
                           // Dislike button (thumbs down)
                           GestureDetector(
-                            onTap: () {
+                            onTap: () async {
+                              final newLikeState = message.isLiked == false ? null : false;
                               setState(() {
-                                message.isLiked = message.isLiked == false ? null : false;
+                                message.isLiked = newLikeState;
                               });
-                              _showFeedbackSnackBar(false, message.isLiked == false);
+                              await _updateMessageFeedback(message, newLikeState);
+                              _showFeedbackSnackBar(false, newLikeState == false);
                             },
                             child: Container(
                               padding: const EdgeInsets.all(4),
@@ -1394,6 +1457,38 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
     }
   }
 
+  Future<void> _updateMessageFeedback(ChatMessage message, bool? isLiked) async {
+    // Only update feedback if we have both thread ID and message ID
+    if (_currentThreadId == null || message.messageId == null) {
+      _log.warning('Cannot update feedback: missing thread or message ID');
+      return;
+    }
+
+    String feedbackType = 'none';
+    if (isLiked == true) {
+      feedbackType = 'like';
+    } else if (isLiked == false) {
+      feedbackType = 'dislike';
+    }
+
+    try {
+      final result = await FastApiService.updateFeedback(
+        messageId: message.messageId!,
+        threadId: _currentThreadId!,
+        feedbackType: feedbackType,
+        userId: _userId,
+      );
+
+      if (result.containsKey('error')) {
+        _log.warning('Failed to update feedback: ${result['error']}');
+      } else {
+        _log.info('Feedback updated successfully');
+      }
+    } catch (e) {
+      _log.warning('Error updating feedback: $e');
+    }
+  }
+
   void _showFeedbackSnackBar(bool isLike, bool isActive) {
     final appColors = context.appColors;
     if (!mounted) return;
@@ -1637,6 +1732,8 @@ class ChatMessage {
   bool? isLiked; // null = no rating, true = liked, false = disliked
   bool isStreaming; // Track if this message is currently being streamed
   List<Map<String, String>> footnotes; // List of footnotes with id and content (mutable for streaming)
+  String? threadId; // Thread ID from backend
+  String? messageId; // Message ID from backend database
 
   ChatMessage({
     required this.id,
@@ -1644,6 +1741,8 @@ class ChatMessage {
     required this.isOwn,
     required this.timestamp,
     required this.author,
+    this.threadId,
+    this.messageId,
     this.isLiked,
     this.isStreaming = false,
     List<Map<String, String>>? footnotes,

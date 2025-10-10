@@ -5,9 +5,17 @@ import os
 from dotenv import load_dotenv
 import json
 import re
+import uuid
+from database import initialize_database
+import logging
+
 load_dotenv()
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
+
+# Initialize database for message tracking
+chat_db = initialize_database()
+logger = logging.getLogger(__name__)
 
 # Databricks configuration
 DATABRICKS_TOKEN = os.environ.get('DATABRICKS_TOKEN', '')
@@ -23,7 +31,7 @@ client = OpenAI(
 
 @router.post("/send")
 async def send_message(message: dict):
-    """Send a chat message to Databricks endpoint with conversation history"""
+    """Send a chat message to Databricks endpoint with conversation history and track in database"""
     try:
         # Extract the message text from the request
         message_text = message.get("message", "").strip()
@@ -35,6 +43,23 @@ async def send_message(message: dict):
 
         # Extract stream parameter (defaults to True for backward compatibility)
         use_streaming = message.get("stream", True)
+
+        # Extract or create thread ID
+        thread_id = message.get("thread_id")
+        user_id = message.get("user_id", "dev_user")
+
+        # Create new thread if not provided
+        if not thread_id:
+            thread_id = chat_db.create_thread(user_id=user_id)
+            logger.info(f"Created new thread: {thread_id}")
+
+        # Save user message to database
+        user_message_id = chat_db.save_message(
+            thread_id=thread_id,
+            user_id=user_id,
+            message_role="user",
+            message_content=message_text
+        )
 
         # Check if Databricks client is configured
         if not DATABRICKS_TOKEN:
@@ -74,6 +99,9 @@ async def send_message(message: dict):
             # Create streaming response with buffering for complete markdown structures
             def generate_stream():
                 try:
+                    # Send metadata first (thread_id, user_message_id)
+                    yield f"data: {json.dumps({'metadata': {'thread_id': thread_id, 'user_message_id': user_message_id, 'user_id': user_id}})}\n\n"
+
                     buffer = ""
                     full_response_debug = ""  # Accumulate entire response for debugging
 
@@ -165,6 +193,21 @@ async def send_message(message: dict):
                     print(full_response_debug)
                     print("="*80 + "\n")
 
+                    # Save assistant message with complete content after streaming is done
+                    if full_response_debug:
+                        try:
+                            # Save the complete assistant message to database
+                            assistant_message_id = chat_db.save_message(
+                                thread_id=thread_id,
+                                user_id=user_id,
+                                message_role="assistant",
+                                message_content=full_response_debug
+                            )
+                            # Send assistant message ID
+                            yield f"data: {json.dumps({'assistant_message_id': assistant_message_id})}\n\n"
+                        except Exception as e:
+                            logger.error(f"Failed to save assistant message: {e}")
+
                     # Send end signal
                     yield f"data: {json.dumps({'done': True})}\n\n"
                 except Exception as e:
@@ -191,9 +234,22 @@ async def send_message(message: dict):
                                 if hasattr(content_item, 'text') and content_item.text:
                                     full_content += content_item.text
 
+                # Save assistant message to database
+                assistant_message_id = None
+                if full_content:
+                    assistant_message_id = chat_db.save_message(
+                        thread_id=thread_id,
+                        user_id=user_id,
+                        message_role="assistant",
+                        message_content=full_content
+                    )
+
                 return {
                     "response": full_content,
                     "backend": "databricks",
+                    "thread_id": thread_id,
+                    "user_message_id": user_message_id,
+                    "assistant_message_id": assistant_message_id,
                     "status": "success"
                 }
             except Exception as e:

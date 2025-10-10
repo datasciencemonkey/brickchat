@@ -6,7 +6,7 @@ import os
 from dotenv import load_dotenv
 
 # Import routers
-from routers import health, chat, tts
+from routers import health, chat, tts, feedback
 
 load_dotenv()
 
@@ -36,6 +36,7 @@ async def add_wasm_headers(request: Request, call_next):
 app.include_router(health.router)
 app.include_router(chat.router)
 app.include_router(tts.router)
+app.include_router(feedback.router)
 
 # Define API routes first, then serve static files
 # This ensures /api routes are matched before the catch-all static files

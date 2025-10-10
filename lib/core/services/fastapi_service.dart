@@ -6,7 +6,11 @@ class FastApiService {
 
   /// Sends a message to the FastAPI backend and returns complete response (DEFAULT)
   /// Uses non-streaming mode (stream=false) for faster, complete responses
-  static Future<String> sendMessage(String message, [List<Map<String, String>>? conversationHistory]) async {
+  static Future<Map<String, dynamic>> sendMessage(String message, {
+    List<Map<String, String>>? conversationHistory,
+    String? threadId,
+    String userId = "dev_user",
+  }) async {
     try {
       final url = Uri.parse('$baseUrl/api/chat/send');
 
@@ -14,7 +18,13 @@ class FastApiService {
       Map<String, dynamic> requestBody = {
         'message': message,
         'stream': false, // Default to non-streaming mode
+        'user_id': userId,
       };
+
+      // Add thread ID if provided
+      if (threadId != null) {
+        requestBody['thread_id'] = threadId;
+      }
 
       // Add conversation history if provided
       if (conversationHistory != null && conversationHistory.isNotEmpty) {
@@ -31,22 +41,37 @@ class FastApiService {
         final data = json.decode(response.body);
 
         if (data['status'] == 'success') {
-          return data['response'] ?? '';
+          return {
+            'response': data['response'] ?? '',
+            'thread_id': data['thread_id'],
+            'user_message_id': data['user_message_id'],
+            'assistant_message_id': data['assistant_message_id'],
+          };
         } else {
-          return 'Error: ${data['response'] ?? 'Unknown error'}';
+          return {
+            'error': 'Error: ${data['response'] ?? 'Unknown error'}',
+          };
         }
       } else {
-        return 'Error: ${response.statusCode} - ${response.body}';
+        return {
+          'error': 'Error: ${response.statusCode} - ${response.body}',
+        };
       }
     } catch (e) {
-      return 'Error connecting to backend: $e';
+      return {
+        'error': 'Error connecting to backend: $e',
+      };
     }
   }
 
   /// Sends a message to the FastAPI backend and returns streaming response
   /// Uses streaming mode (stream=true) for real-time token-by-token responses
-  /// Returns a stream of maps containing either 'content' or 'footnotes'
-  static Stream<Map<String, dynamic>> sendMessageStream(String message, [List<Map<String, String>>? conversationHistory]) async* {
+  /// Returns a stream of maps containing either 'content', 'footnotes', or 'metadata'
+  static Stream<Map<String, dynamic>> sendMessageStream(String message, {
+    List<Map<String, String>>? conversationHistory,
+    String? threadId,
+    String userId = "dev_user",
+  }) async* {
     try {
       final url = Uri.parse('$baseUrl/api/chat/send');
 
@@ -54,7 +79,13 @@ class FastApiService {
       Map<String, dynamic> requestBody = {
         'message': message,
         'stream': true, // Explicitly enable streaming mode
+        'user_id': userId,
       };
+
+      // Add thread ID if provided
+      if (threadId != null) {
+        requestBody['thread_id'] = threadId;
+      }
 
       // Add conversation history if provided
       if (conversationHistory != null && conversationHistory.isNotEmpty) {
@@ -132,6 +163,43 @@ class FastApiService {
       return response;
     } catch (e) {
       throw Exception('Error requesting TTS: $e');
+    }
+  }
+
+  /// Update feedback (like/dislike) for a message
+  static Future<Map<String, dynamic>> updateFeedback({
+    required String messageId,
+    required String threadId,
+    required String feedbackType, // 'like', 'dislike', or 'none'
+    String userId = "dev_user",
+  }) async {
+    try {
+      final url = Uri.parse('$baseUrl/api/feedback/feedback');
+
+      Map<String, dynamic> requestBody = {
+        'message_id': messageId,
+        'thread_id': threadId,
+        'user_id': userId,
+        'feedback_type': feedbackType,
+      };
+
+      final response = await http.put(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode(requestBody),
+      );
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        return {
+          'error': 'Error: ${response.statusCode} - ${response.body}',
+        };
+      }
+    } catch (e) {
+      return {
+        'error': 'Error updating feedback: $e',
+      };
     }
   }
 }
