@@ -172,7 +172,7 @@ class TtsProviderNotifier extends StateNotifier<String> {
 
 /// TTS voice setting notifier
 class TtsVoiceNotifier extends StateNotifier<String> {
-  TtsVoiceNotifier() : super('af_nicole') {
+  TtsVoiceNotifier() : super('af_bella') {
     _loadSetting();
   }
 
@@ -180,10 +180,10 @@ class TtsVoiceNotifier extends StateNotifier<String> {
   Future<void> _loadSetting() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final voice = prefs.getString(SettingsKeys.ttsVoice) ?? 'af_nicole';
+      final voice = prefs.getString(SettingsKeys.ttsVoice) ?? 'af_bella';
       state = voice;
     } catch (e) {
-      state = 'af_nicole';
+      state = 'af_bella';
     }
   }
 
