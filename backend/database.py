@@ -227,8 +227,12 @@ class ChatDatabase:
             except Exception as e:
                 if conn:
                     conn.rollback()
-                logger.error(f"Schema initialization failed: {e}")
-                raise
+                # Only log as debug for expected errors like existing objects
+                if "already exists" in str(e):
+                    logger.debug(f"Schema objects already exist: {e}")
+                else:
+                    logger.error(f"Schema initialization failed: {e}")
+                    raise
             finally:
                 if conn:
                     self.db.put_connection(conn)

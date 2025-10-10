@@ -50,10 +50,12 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Create triggers to auto-update updated_at
+-- Create triggers to auto-update updated_at (drop if exists first)
+DROP TRIGGER IF EXISTS update_chat_threads_updated_at ON chat_threads;
 CREATE TRIGGER update_chat_threads_updated_at BEFORE UPDATE ON chat_threads
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_message_feedback_updated_at ON message_feedback;
 CREATE TRIGGER update_message_feedback_updated_at BEFORE UPDATE ON message_feedback
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
