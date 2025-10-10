@@ -206,4 +206,50 @@ class FastApiService {
       };
     }
   }
+
+  /// Fetch all threads for a user
+  static Future<List<Map<String, dynamic>>> getUserThreads(String userId) async {
+    try {
+      final url = Uri.parse('$baseUrl/api/chat/threads/$userId');
+
+      final response = await http.get(
+        url,
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return List<Map<String, dynamic>>.from(data['threads'] ?? []);
+      } else {
+        print('Error fetching threads: ${response.statusCode} - ${response.body}');
+        return [];
+      }
+    } catch (e) {
+      print('Error fetching threads: $e');
+      return [];
+    }
+  }
+
+  /// Fetch all messages for a specific thread
+  static Future<List<Map<String, dynamic>>> getThreadMessages(String threadId) async {
+    try {
+      final url = Uri.parse('$baseUrl/api/chat/threads/$threadId/messages');
+
+      final response = await http.get(
+        url,
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return List<Map<String, dynamic>>.from(data['messages'] ?? []);
+      } else {
+        print('Error fetching thread messages: ${response.statusCode} - ${response.body}');
+        return [];
+      }
+    } catch (e) {
+      print('Error fetching thread messages: $e');
+      return [];
+    }
+  }
 }

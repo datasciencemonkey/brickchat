@@ -29,6 +29,28 @@ client = OpenAI(
 )
 
 
+@router.get("/threads/{user_id}")
+async def get_user_threads(user_id: str):
+    """Get all chat threads for a user with their last message"""
+    try:
+        threads = chat_db.get_user_threads_with_last_message(user_id)
+        return {"threads": threads}
+    except Exception as e:
+        logger.error(f"Error fetching threads: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch threads: {str(e)}")
+
+
+@router.get("/threads/{thread_id}/messages")
+async def get_thread_messages(thread_id: str):
+    """Get all messages for a specific thread"""
+    try:
+        messages = chat_db.get_thread_messages(thread_id)
+        return {"messages": messages}
+    except Exception as e:
+        logger.error(f"Error fetching thread messages: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch messages: {str(e)}")
+
+
 @router.post("/send")
 async def send_message(message: dict):
     """Send a chat message to Databricks endpoint with conversation history and track in database"""
@@ -197,11 +219,12 @@ async def send_message(message: dict):
                     if full_response_debug:
                         try:
                             # Save the complete assistant message to database
+                            # Save the raw content as-is - Flutter will handle the parsing
                             assistant_message_id = chat_db.save_message(
                                 thread_id=thread_id,
                                 user_id=user_id,
                                 message_role="assistant",
-                                message_content=full_response_debug
+                                message_content=full_response_debug  # Save raw content with footnotes
                             )
                             # Send assistant message ID
                             yield f"data: {json.dumps({'assistant_message_id': assistant_message_id})}\n\n"

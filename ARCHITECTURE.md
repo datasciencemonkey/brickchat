@@ -13,13 +13,21 @@
 │  │  │  (build/web/)    │  Static │   (app.py)                   │   │  │
 │  │  │                  │  Files  │                               │   │  │
 │  │  │  - Chat UI       │         │  Routes:                      │   │  │
-│  │  │  - Voice Input   │         │  ├─ /api/health              │   │  │
-│  │  │  - Settings      │         │  ├─ /api/chat/send (SSE)     │   │  │
-│  │  │  - TTS Player    │         │  └─ /api/tts/generate        │   │  │
-│  │  └──────────────────┘         └──────────────────────────────┘   │  │
-│  │         │                                   │                      │  │
-│  │         │ HTTP/HTTPS                        │ API Calls            │  │
-│  │         └───────────────────────────────────┘                      │  │
+│  │  │  - Chat History  │         │  ├─ /api/health              │   │  │
+│  │  │  - Voice Input   │         │  ├─ /api/chat/send (SSE)     │   │  │
+│  │  │  - Settings      │         │  ├─ /api/tts/generate        │   │  │
+│  │  │  - TTS Player    │         │  └─ /api/feedback/*          │   │  │
+│  │  └──────────────────┘         └──────────────┬───────────────┘   │  │
+│  │         │                                     │                    │  │
+│  │         │ HTTP/HTTPS                          │ SQL Queries        │  │
+│  │         └─────────────────────────────────────┤                    │  │
+│  │                                               │                    │  │
+│  │                                  ┌────────────▼──────────────┐    │  │
+│  │                                  │  PostgreSQL Database      │    │  │
+│  │                                  │  - Chat threads           │    │  │
+│  │                                  │  - Messages & history     │    │  │
+│  │                                  │  - User feedback          │    │  │
+│  │                                  └───────────────────────────┘    │  │
 │  └───────────────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────────┘
                                     │
@@ -52,7 +60,8 @@ lib/
 ├── features/
 │   ├── chat/
 │   │   └── presentation/
-│   │       └── chat_home_page.dart    # Main chat interface
+│   │       ├── chat_home_page.dart    # Main chat interface
+│   │       └── chat_history_page.dart # Chat history & search
 │   └── settings/
 │       ├── presentation/
 │       │   └── settings_page.dart     # Settings UI
@@ -71,6 +80,9 @@ lib/
 - Voice input (Speech-to-Text)
 - TTS playback (Text-to-Speech)
 - Theme persistence (SharedPreferences)
+- Chat history with search functionality
+- Continue conversations from history
+- Message feedback (like/dislike)
 
 ### 2. Backend (FastAPI)
 
@@ -79,16 +91,21 @@ app.py                              # Main FastAPI application
 ├── CORS middleware                 # Allow cross-origin requests
 ├── WASM headers middleware         # Flutter WASM support
 ├── Static file serving             # Serve Flutter build/web
+├── database.py                     # PostgreSQL database manager
 └── API Routers:
     ├── routers/health.py           # Health check endpoint
     ├── routers/chat.py             # Chat with Databricks AI
-    └── routers/tts.py              # Text-to-Speech generation
+    ├── routers/tts.py              # Text-to-Speech generation
+    └── routers/feedback.py         # Feedback & thread management
 ```
 
 **Key Features:**
 - OpenAI-compatible API client for Databricks
 - Server-Sent Events (SSE) for streaming responses
 - Dual TTS provider support (Deepgram/Replicate)
+- PostgreSQL database for chat persistence
+- Thread-based conversation management
+- Message feedback system (like/dislike)
 - Environment-based configuration
 
 ### 3. External Services
@@ -118,6 +135,102 @@ Speed: <1 seconds
 ```
 
 ## Data Flow Diagrams
+
+### Chat History & Search Flow
+
+```
+User opens history
+   │
+   ▼
+┌─────────────────┐
+│ Flutter UI      │
+│ chat_history    │
+│ _page.dart      │
+└─────────────────┘
+   │
+   │ 1. GET /api/chat/threads?user_id=dev_user
+   │
+   ▼
+┌─────────────────┐
+│ FastAPI         │
+│ routers/chat.py │
+└─────────────────┘
+   │
+   │ 2. Query threads with last message
+   │
+   ▼
+┌─────────────────┐
+│ PostgreSQL      │
+│ chat_threads    │
+│ chat_messages   │
+└─────────────────┘
+   │
+   │ 3. Return thread list with metadata
+   │
+   ▼
+┌─────────────────┐
+│ Flutter UI      │
+│ Display threads │
+│ + Search box    │
+└─────────────────┘
+   │
+   │ User searches or selects thread
+   │
+   ▼
+┌─────────────────┐
+│ GET /api/       │
+│ feedback/thread/│
+│ {id}/messages   │
+└─────────────────┘
+   │
+   │ 4. Load messages with feedback
+   │
+   ▼
+┌─────────────────┐
+│ Continue        │
+│ conversation    │
+│ in chat UI      │
+└─────────────────┘
+```
+
+### Message Feedback Flow
+
+```
+User clicks like/dislike
+   │
+   ▼
+┌─────────────────┐
+│ Flutter UI      │
+│ chat_home_page  │
+└─────────────────┘
+   │
+   │ 1. PUT /api/feedback/feedback
+   │    { message_id, thread_id, feedback_type }
+   │
+   ▼
+┌─────────────────┐
+│ FastAPI         │
+│ routers/        │
+│ feedback.py     │
+└─────────────────┘
+   │
+   │ 2. UPSERT feedback
+   │
+   ▼
+┌─────────────────┐
+│ PostgreSQL      │
+│ message_feedback│
+└─────────────────┘
+   │
+   │ 3. Return updated feedback
+   │
+   ▼
+┌─────────────────┐
+│ Flutter UI      │
+│ Update icon     │
+│ state           │
+└─────────────────┘
+```
 
 ### Chat Message Flow (Streaming)
 
@@ -301,6 +414,16 @@ env:
     value: "{{secrets/brickchat-secrets/deepgram-api-key}}"
   - name: REPLICATE_API_TOKEN
     value: "{{secrets/brickchat-secrets/replicate-api-token}}"
+  - name: PGHOST
+    value: "{{secrets/brickchat-secrets/pghost}}"
+  - name: PGDATABASE
+    value: "brickchat"
+  - name: PGUSER
+    value: "service_brickchat"
+  - name: PG_PASS
+    value: "{{secrets/brickchat-secrets/pg-pass}}"
+  - name: PGPORT
+    value: "5432"
 ```
 
 ### Secrets Management
@@ -312,7 +435,50 @@ Databricks Workspace
 Secret Scope: brickchat-secrets
    ├── databricks-token
    ├── deepgram-api-key
-   └── replicate-api-token
+   ├── replicate-api-token
+   ├── pghost (PostgreSQL hostname)
+   └── pg-pass (PostgreSQL password)
+```
+
+### Database Schema
+
+```sql
+-- Chat threads table
+CREATE TABLE chat_threads (
+    thread_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    metadata JSONB DEFAULT '{}'::jsonb
+);
+
+-- Chat messages table
+CREATE TABLE chat_messages (
+    message_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    thread_id UUID NOT NULL REFERENCES chat_threads(thread_id),
+    user_id VARCHAR(255) NOT NULL,
+    message_role VARCHAR(20) NOT NULL CHECK (message_role IN ('user', 'assistant', 'system')),
+    message_content TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    metadata JSONB DEFAULT '{}'::jsonb
+);
+
+-- Message feedback table
+CREATE TABLE message_feedback (
+    feedback_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id VARCHAR(255) NOT NULL,
+    message_id UUID NOT NULL REFERENCES chat_messages(message_id),
+    thread_id UUID NOT NULL REFERENCES chat_threads(thread_id),
+    feedback_type VARCHAR(20) NOT NULL CHECK (feedback_type IN ('like', 'dislike')),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (user_id, message_id, thread_id)
+);
+
+-- Indexes for performance
+CREATE INDEX idx_threads_user_id ON chat_threads(user_id);
+CREATE INDEX idx_messages_thread_id ON chat_messages(thread_id);
+CREATE INDEX idx_feedback_message_id ON message_feedback(message_id);
 ```
 
 ## Deployment Architecture
@@ -362,14 +528,17 @@ Secret Scope: brickchat-secrets
 - **Server**: Uvicorn
 - **AI Client**: OpenAI SDK (Databricks-compatible)
 - **TTS**: Deepgram SDK, Replicate SDK
+- **Database**: PostgreSQL with psycopg2
+- **Connection Pooling**: SimpleConnectionPool (1-20 connections)
 - **Config**: python-dotenv
 
 ### Infrastructure
 - **Platform**: Databricks Apps (Serverless)
 - **Compute**: Auto-scaling serverless compute
-- **Storage**: Ephemeral (no persistent storage)
+- **Storage**: PostgreSQL database (persistent)
 - **Secrets**: Databricks Secret Manager
 - **Networking**: HTTPS with CORS support
+- **Database**: Hosted PostgreSQL with SSL
 
 ## Performance Characteristics
 

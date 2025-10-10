@@ -41,6 +41,21 @@
 - **Collapsible Reasoning**: AI reasoning displayed in expandable sections for transparency
 - **Footnotes Support**: Interactive footnotes with hover tooltips and expandable content
 
+### 📜 **Chat History & Persistence**
+- **Thread-Based Conversations**: All chats automatically saved to PostgreSQL database with unique thread IDs
+- **Chat History Page**: Access all your previous conversations in one organized view
+- **Search Functionality**: Find past conversations by searching through message content
+- **Continue Conversations**: Resume any previous chat thread with full context preserved
+- **Smart Timestamps**: See when each conversation was last active (e.g., "2 hours ago", "3 days ago")
+- **Message Previews**: View first and last messages for quick identification of conversations
+
+### 👍 **Message Feedback System**
+- **Like/Dislike Messages**: Provide feedback on assistant responses with intuitive icons
+- **Persistent Feedback**: All feedback stored in database and synced across sessions
+- **Visual Indicators**: Clear icons showing your current feedback state
+- **Toggle Support**: Easily change or remove feedback at any time
+- **User-Specific**: Feedback is tracked per user for personalized experience
+
 ### ⚙️ **Customizable Settings**
 - **Streaming Toggle**: Enable/disable real-time response streaming (experimental)
 - **Eager Mode**: Automatically play text-to-speech (works with or without streaming)
@@ -53,6 +68,10 @@
 - **Cross-Platform**: Works across iOS, Android, Web browsers, and Desktop (Windows, macOS, Linux)
 - **WASM Compatible**: Modern web technology for optimal performance
 - **Clean Architecture**: Built with Flutter and Riverpod for maintainable code
+- **PostgreSQL Backend**: Enterprise-grade database for reliable, persistent storage
+- **Thread-Based Management**: Intelligent conversation organization with unique thread IDs
+- **Message Persistence**: All messages and feedback automatically saved with metadata
+- **Connection Pooling**: Efficient database connections (1-20 pool) for optimal performance
 - **LLM-Enhanced TTS**: Backend uses Databricks LLM to intelligently clean text for optimal speech output
 - **Efficient Caching**: LRU cache reduces API calls while maintaining fresh, context-aware text processing
 - **Error Handling**: Graceful error management with user-friendly messages
@@ -92,6 +111,21 @@ BrickChat uses advanced LLM technology to ensure optimal text-to-speech output:
 - **Seamless Integration**: All processing happens server-side - no client-side complexity
 
 ## 🚀 **Getting Started**
+
+### First Time Use
 Simply type your message or click the microphone to start speaking. The AI assistant will respond intelligently based on your conversation context, making it feel like chatting with a knowledgeable colleague.
+
+### Accessing Chat History
+1. Click the **history icon** in the top navigation
+2. Browse all your previous conversations with timestamps
+3. Use the **search box** to find specific topics or messages
+4. Click any conversation to continue where you left off
+5. Start a **new conversation** anytime with the + button
+
+### Providing Feedback
+- Click the 👍 icon to like helpful responses
+- Click the 👎 icon to flag responses that need improvement
+- Your feedback helps improve the AI assistant over time
+- Toggle feedback on/off by clicking the icons again
 
 **Built with ❤️ using Flutter, Databricks, and modern web technologies.**

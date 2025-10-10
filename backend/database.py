@@ -37,7 +37,16 @@ class DatabaseManager:
 
     def get_connection(self):
         """Get a connection from the pool"""
-        return self.pool.getconn()
+        conn = self.pool.getconn()
+        # Test if connection is alive
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT 1")
+        except:
+            # Connection is dead, recreate it
+            self.pool.putconn(conn, close=True)
+            conn = self.pool.getconn()
+        return conn
 
     def put_connection(self, conn):
         """Return a connection to the pool"""
@@ -86,6 +95,37 @@ class ChatDatabase:
 
     def __init__(self, db_manager: DatabaseManager):
         self.db = db_manager
+
+    def get_user_threads_with_last_message(self, user_id: str) -> List[Dict]:
+        """Get all threads for a user with their last message"""
+        query = """
+            SELECT
+                t.thread_id,
+                t.created_at as thread_created_at,
+                t.updated_at as thread_updated_at,
+                m.message_content as last_message,
+                m.created_at as last_message_time,
+                m.message_role as last_message_role,
+                (
+                    SELECT message_content
+                    FROM chat_messages
+                    WHERE thread_id = t.thread_id
+                    AND message_role = 'user'
+                    ORDER BY created_at ASC
+                    LIMIT 1
+                ) as first_user_message
+            FROM chat_threads t
+            LEFT JOIN LATERAL (
+                SELECT message_content, created_at, message_role
+                FROM chat_messages
+                WHERE thread_id = t.thread_id
+                ORDER BY created_at DESC
+                LIMIT 1
+            ) m ON true
+            WHERE t.user_id = %s
+            ORDER BY COALESCE(m.created_at, t.updated_at) DESC
+        """
+        return self.db.execute_query(query, (user_id,))
 
     def create_thread(self, user_id: str = "dev_user", metadata: Dict = None) -> str:
         """Create a new chat thread"""
@@ -181,8 +221,8 @@ class ChatDatabase:
         return [{
             "message_id": str(r['message_id']),
             "user_id": r['user_id'],
-            "role": r['message_role'],
-            "content": r['message_content'],
+            "message_role": r['message_role'],  # Changed from "role" to match Flutter code
+            "message_content": r['message_content'].replace('\ufb01', 'fi').replace('\ufb02', 'fl').replace('\u25cf', '•') if r['message_content'] else '',  # Clean up Unicode ligatures
             "created_at": r['created_at'].isoformat(),
             "metadata": r['metadata'],
             "feedback": r['feedback_type']

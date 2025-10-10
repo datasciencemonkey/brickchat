@@ -131,11 +131,25 @@ class _CollapsibleReasoningWidgetState extends State<CollapsibleReasoningWidget>
           ),
         ),
 
-        // Main content (ALWAYS VISIBLE)
+        // Main content (ALWAYS VISIBLE - show original if parsing fails)
         if (parsedContent.mainContent.isNotEmpty) ...[
           const SizedBox(height: 12),
           MarkdownBody(
             data: processedMainContent,
+            styleSheet: widget.styleSheet,
+            onTapLink: (text, href, title) {
+              if (href != null) {
+                _launchUrl(href);
+              }
+            },
+            selectable: true,
+          ),
+        ] else if (widget.messageText.isNotEmpty) ...[
+          // Fallback: If parsing resulted in empty main content but original text exists
+          // This handles cases where the entire message might be in think tags
+          const SizedBox(height: 12),
+          MarkdownBody(
+            data: widget.messageText,
             styleSheet: widget.styleSheet,
             onTapLink: (text, href, title) {
               if (href != null) {

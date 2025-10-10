@@ -20,6 +20,7 @@ import '../../../shared/widgets/footnotes_accordion.dart';
 import '../../settings/presentation/settings_page.dart';
 import '../../settings/providers/settings_provider.dart';
 import '../../../core/services/fastapi_service.dart';
+import 'chat_history_page.dart';
 // Removed TTS text cleaner - now handled by backend LLM
 
 class ChatHomePage extends ConsumerStatefulWidget {
@@ -78,6 +79,143 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
           author: 'Assistant',
         ),
       ]);
+    });
+  }
+
+  void _createNewThread() {
+    setState(() {
+      // Clear all messages
+      _messages.clear();
+
+      // Clear conversation history
+      _conversationHistory.clear();
+
+      // Reset thread ID
+      _currentThreadId = null;
+
+      // Clear the text input
+      _messageController.clear();
+
+      // Stop any playing audio
+      _stopAudio();
+
+      // Hide speech to text if showing
+      _showSpeechToText = false;
+
+      // Add welcome message for the new thread
+      _loadInitialMessages();
+    });
+
+    // Show confirmation snackbar
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.add_circle,
+                size: 14,
+                color: Colors.white,
+              ),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  'New conversation started',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.white,
+                  ),
+                  softWrap: true,
+                ),
+              ),
+            ],
+          ),
+          duration: Duration(seconds: 2),
+          backgroundColor: context.appColors.accent.withValues(alpha: 0.85),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppConstants.snackBarRadius),
+          ),
+          elevation: 4,
+          width: MediaQuery.of(context).size.width * AppConstants.snackBarWidthFactor,
+        ),
+      );
+    }
+  }
+
+  void _loadThreadConversation(String? threadId, List<Map<String, dynamic>> messages) {
+    if (threadId == null || threadId == 'null') {
+      // Start new thread
+      _createNewThread();
+      return;
+    }
+
+    setState(() {
+      // Clear current messages
+      _messages.clear();
+      _conversationHistory.clear();
+
+      // Set the thread ID
+      _currentThreadId = threadId;
+
+      // Stop any playing audio
+      _stopAudio();
+
+      // Hide speech to text if showing
+      _showSpeechToText = false;
+
+      // Load messages from the thread
+      for (final message in messages) {
+        final isUserMessage = message['message_role'] == 'user';
+        final messageId = 'loaded_${message['message_id'] ?? DateTime.now().millisecondsSinceEpoch}';
+        final messageContent = message['message_content'] ?? '';
+
+        // Debug logging
+        print('Loading message: role=${message['message_role']}, content_length=${messageContent.length}, first_100_chars=${messageContent.length > 100 ? messageContent.substring(0, 100) : messageContent}');
+
+        // Parse footnotes from assistant messages
+        List<Map<String, String>> footnotes = [];
+        String processedContent = messageContent;
+
+        if (!isUserMessage && messageContent.contains('[^')) {
+          // Extract footnotes from the content
+          final parsedResponse = _parseFootnotesFromText(messageContent);
+          processedContent = parsedResponse.text;
+          footnotes = parsedResponse.footnotes;
+        }
+
+        // Add to messages list for display
+        _messages.add(ChatMessage(
+          id: messageId,
+          text: processedContent,
+          isOwn: isUserMessage,
+          timestamp: message['created_at'] != null
+              ? DateTime.parse(message['created_at'])
+              : DateTime.now(),
+          author: isUserMessage ? 'You' : 'Assistant',
+          threadId: threadId,
+          messageId: message['message_id'],
+          footnotes: footnotes,
+        ));
+
+        // Add to conversation history for context
+        _conversationHistory.add({
+          'role': message['message_role'] ?? 'user',
+          'content': message['message_content'] ?? '',
+        });
+      }
+
+      // If no messages, add welcome message
+      if (_messages.isEmpty) {
+        _loadInitialMessages();
+      }
+    });
+
+    // Scroll to bottom after loading
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollToBottom();
     });
   }
 
@@ -387,6 +525,11 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
     return context;
   }
 
+  /// Parse footnotes from text (alias for loading from history)
+  _ParsedFootnoteResponse _parseFootnotesFromText(String text) {
+    return _parseFootnotesFromResponse(text);
+  }
+
   /// Parse footnotes from response text
   _ParsedFootnoteResponse _parseFootnotesFromResponse(String response) {
     // First, look for footnote definitions at the end of the message
@@ -522,6 +665,11 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
                   ),
                   centerTitle: false,
                   actions: [
+                    IconButton(
+                      onPressed: _createNewThread,
+                      icon: const Icon(Icons.add),
+                      tooltip: 'New conversation',
+                    ),
                     const ThemeToggle(),
                     const SizedBox(width: AppConstants.spacingSm),
                   ],
@@ -661,9 +809,19 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
           // Chat functionality
         },
       ),
-      const SidebarXItem(
+      SidebarXItem(
         icon: Icons.search,
         label: 'Search',
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => ChatHistoryPage(
+                userId: _userId,
+                onThreadSelected: _loadThreadConversation,
+              ),
+            ),
+          );
+        },
       ),
       SidebarXItem(
         icon: Icons.settings,
@@ -770,9 +928,16 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
                               ),
                             )
                           : CollapsibleReasoningWidget(
-                              messageText: message.text == 'WELCOME_MESSAGE'
-                                  ? (ref.isDarkMode ? 'Welcome to ${AppConstants.appNameDark}!' : 'Welcome to BrickChat!')
-                                  : message.text,
+                              messageText: () {
+                                final text = message.text == 'WELCOME_MESSAGE'
+                                    ? (ref.isDarkMode ? 'Welcome to ${AppConstants.appNameDark}!' : 'Welcome to BrickChat!')
+                                    : message.text;
+                                // Debug: Log what's being passed to the widget
+                                if (message.id.startsWith('loaded_')) {
+                                  print('[DEBUG] Rendering loaded message: id=${message.id}, text_length=${text.length}, text_preview=${text.length > 50 ? text.substring(0, 50) : text}');
+                                }
+                                return text;
+                              }(),
                               styleSheet: MarkdownStyleSheet(
                                 p: TextStyle(
                                   color: appColors.messageText,
@@ -1224,10 +1389,14 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
               const SizedBox(width: AppConstants.spacingXs),
 
               // Send button
-              FloatingActionButton(
+              IconButton(
                 onPressed: _sendMessage,
-                mini: true,
-                child: const Icon(Icons.send),
+                icon: const Icon(Icons.send),
+                style: IconButton.styleFrom(
+                  backgroundColor: Theme.of(context).colorScheme.primary,
+                  foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                ),
+                tooltip: 'Send message',
               ),
             ],
           ),
