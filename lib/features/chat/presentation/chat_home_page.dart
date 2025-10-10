@@ -305,10 +305,11 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
           _scrollToBottom();
 
           // Add final response to conversation history
-          if (response.isNotEmpty) {
+          final responseText = response['response'] ?? '';
+          if (responseText.isNotEmpty) {
             _conversationHistory.add({
               'role': 'assistant',
-              'content': response,
+              'content': responseText,
             });
 
             // Auto-trigger TTS if eager mode is enabled

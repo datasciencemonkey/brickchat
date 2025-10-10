@@ -136,7 +136,11 @@ class FastApiService {
   /// Legacy wrapper that uses the new non-streaming method
   @Deprecated('Use sendMessage() instead for non-streaming or sendMessageStream() for streaming')
   static Future<String> sendMessageLegacy(String message, [List<Map<String, String>>? conversationHistory]) async {
-    return sendMessage(message, conversationHistory);
+    final response = await sendMessage(
+      message,
+      conversationHistory: conversationHistory,
+    );
+    return response['response'] ?? response['error'] ?? 'Unknown error';
   }
 
   /// Get text-to-speech audio URL from backend
