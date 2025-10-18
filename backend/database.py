@@ -1,9 +1,6 @@
 """Database connection and utilities for BrickChat feedback system"""
 import os
-import uuid
-from datetime import datetime
-from typing import Optional, Dict, Any, List
-import psycopg2
+from typing import  Dict, List
 from psycopg2.extras import RealDictCursor, Json
 from psycopg2.pool import SimpleConnectionPool
 import logging
@@ -23,7 +20,7 @@ class DatabaseManager:
             # Get connection parameters from environment variables
             self.pool = SimpleConnectionPool(
                 1, 20,  # min and max connections
-                host=os.getenv('PGHOST', 'localhost'),
+                host=os.getenv('PGHOST', ''),
                 database=os.getenv('PGDATABASE', 'brickchat'),
                 user=os.getenv('PGUSER', 'service_brickchat'),
                 password=os.getenv('PG_PASS', ''),
@@ -42,7 +39,7 @@ class DatabaseManager:
         try:
             with conn.cursor() as cursor:
                 cursor.execute("SELECT 1")
-        except:
+        except Exception:
             # Connection is dead, recreate it
             self.pool.putconn(conn, close=True)
             conn = self.pool.getconn()
@@ -106,6 +103,7 @@ class ChatDatabase:
                 m.message_content as last_message,
                 m.created_at as last_message_time,
                 m.message_role as last_message_role,
+                m.agent_endpoint as agent_endpoint,
                 (
                     SELECT message_content
                     FROM chat_messages
@@ -116,7 +114,7 @@ class ChatDatabase:
                 ) as first_user_message
             FROM chat_threads t
             LEFT JOIN LATERAL (
-                SELECT message_content, created_at, message_role
+                SELECT message_content, created_at, message_role, agent_endpoint
                 FROM chat_messages
                 WHERE thread_id = t.thread_id
                 ORDER BY created_at DESC
@@ -146,16 +144,17 @@ class ChatDatabase:
                     user_id: str,
                     message_role: str,
                     message_content: str,
+                    agent_endpoint: str = None,
                     metadata: Dict = None) -> str:
         """Save a chat message"""
         query = """
-            INSERT INTO chat_messages (thread_id, user_id, message_role, message_content, metadata)
-            VALUES (%s, %s, %s, %s, %s)
+            INSERT INTO chat_messages (thread_id, user_id, message_role, message_content, agent_endpoint, metadata)
+            VALUES (%s, %s, %s, %s, %s, %s)
             RETURNING message_id, created_at
         """
         result = self.db.execute_query_one(
             query,
-            (thread_id, user_id, message_role, message_content, Json(metadata or {}))
+            (thread_id, user_id, message_role, message_content, agent_endpoint, Json(metadata or {}))
         )
         logger.info(f"Saved message {result['message_id']} in thread {thread_id}")
         return str(result['message_id'])
@@ -209,6 +208,7 @@ class ChatDatabase:
                 m.user_id,
                 m.message_role,
                 m.message_content,
+                m.agent_endpoint,
                 m.created_at,
                 m.metadata,
                 f.feedback_type
@@ -223,6 +223,7 @@ class ChatDatabase:
             "user_id": r['user_id'],
             "message_role": r['message_role'],  # Changed from "role" to match Flutter code
             "message_content": r['message_content'].replace('\ufb01', 'fi').replace('\ufb02', 'fl').replace('\u25cf', '•') if r['message_content'] else '',  # Clean up Unicode ligatures
+            "agent_endpoint": r['agent_endpoint'],
             "created_at": r['created_at'].isoformat(),
             "metadata": r['metadata'],
             "feedback": r['feedback_type']

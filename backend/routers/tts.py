@@ -22,7 +22,7 @@ REPLICATE_API_TOKEN = os.environ.get('REPLICATE_API_TOKEN', '')
 
 # Databricks configuration for LLM text cleaning
 DATABRICKS_TOKEN = os.environ.get('DATABRICKS_TOKEN', '')
-DATABRICKS_BASE_URL = os.environ.get('DATABRICKS_BASE_URL', 'https://adb-984752964297111.11.azuredatabricks.net/serving-endpoints')
+DATABRICKS_BASE_URL = os.environ.get('DATABRICKS_BASE_URL', '')
 DATABRICKS_LLM_MODEL = os.environ.get('DATABRICKS_LLM_MODEL', 'databricks-gemma-3-12b')
 
 # Initialize clients

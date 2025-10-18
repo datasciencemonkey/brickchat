@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     user_id VARCHAR(255) NOT NULL,
     message_role VARCHAR(20) NOT NULL CHECK (message_role IN ('user', 'assistant', 'system')),
     message_content TEXT NOT NULL,
+    agent_endpoint VARCHAR(255),  -- Track which agent/model endpoint was used
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     metadata JSONB DEFAULT '{}'::jsonb
 );

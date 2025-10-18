@@ -5,7 +5,6 @@ import os
 from dotenv import load_dotenv
 import json
 import re
-import uuid
 from database import initialize_database
 import logging
 
@@ -19,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 # Databricks configuration
 DATABRICKS_TOKEN = os.environ.get('DATABRICKS_TOKEN', '')
-DATABRICKS_BASE_URL = os.environ.get('DATABRICKS_BASE_URL', 'https://adb-984752964297111.11.azuredatabricks.net/serving-endpoints')
+DATABRICKS_BASE_URL = os.environ.get('DATABRICKS_BASE_URL', '')
 DATABRICKS_MODEL = os.environ.get('DATABRICKS_MODEL')
 
 # Initialize Databricks client
@@ -27,6 +26,15 @@ client = OpenAI(
     api_key=DATABRICKS_TOKEN,
     base_url=DATABRICKS_BASE_URL
 )
+
+
+@router.get("/config")
+async def get_config():
+    """Get current chat configuration including agent endpoint"""
+    return {
+        "agent_endpoint": DATABRICKS_MODEL,
+        "status": "success"
+    }
 
 
 @router.get("/threads/{user_id}")
@@ -80,7 +88,8 @@ async def send_message(message: dict):
             thread_id=thread_id,
             user_id=user_id,
             message_role="user",
-            message_content=message_text
+            message_content=message_text,
+            agent_endpoint=None  # User messages don't have agent endpoint
         )
 
         # Check if Databricks client is configured
@@ -121,8 +130,8 @@ async def send_message(message: dict):
             # Create streaming response with buffering for complete markdown structures
             def generate_stream():
                 try:
-                    # Send metadata first (thread_id, user_message_id)
-                    yield f"data: {json.dumps({'metadata': {'thread_id': thread_id, 'user_message_id': user_message_id, 'user_id': user_id}})}\n\n"
+                    # Send metadata first (thread_id, user_message_id, agent_endpoint)
+                    yield f"data: {json.dumps({'metadata': {'thread_id': thread_id, 'user_message_id': user_message_id, 'user_id': user_id, 'agent_endpoint': DATABRICKS_MODEL}})}\n\n"
 
                     buffer = ""
                     full_response_debug = ""  # Accumulate entire response for debugging
@@ -224,7 +233,8 @@ async def send_message(message: dict):
                                 thread_id=thread_id,
                                 user_id=user_id,
                                 message_role="assistant",
-                                message_content=full_response_debug  # Save raw content with footnotes
+                                message_content=full_response_debug,  # Save raw content with footnotes
+                                agent_endpoint=DATABRICKS_MODEL
                             )
                             # Send assistant message ID
                             yield f"data: {json.dumps({'assistant_message_id': assistant_message_id})}\n\n"
@@ -264,7 +274,8 @@ async def send_message(message: dict):
                         thread_id=thread_id,
                         user_id=user_id,
                         message_role="assistant",
-                        message_content=full_content
+                        message_content=full_content,
+                        agent_endpoint=DATABRICKS_MODEL
                     )
 
                 return {
@@ -273,6 +284,7 @@ async def send_message(message: dict):
                     "thread_id": thread_id,
                     "user_message_id": user_message_id,
                     "assistant_message_id": assistant_message_id,
+                    "agent_endpoint": DATABRICKS_MODEL,
                     "status": "success"
                 }
             except Exception as e:
