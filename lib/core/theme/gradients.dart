@@ -1,14 +1,70 @@
 import 'package:flutter/material.dart';
 
 abstract class AppGradients {
-  // Dark theme gradients
+  // Light Mode Gradients - Professional & Elegant
+  static const lightBackgroundGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [
+      Color(0xFFFFFFFF), // Pure white
+      Color(0xFFFAFAFA), // Very light gray
+      Color(0xFFF5F5F5), // Subtle gray
+    ],
+    stops: [0.0, 0.5, 1.0],
+  );
+
+  static const lightPrimaryGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [
+      Color(0xFFFF7355), // Bright coral
+      Color(0xFFFF5F46), // Databricks orange-red
+      Color(0xFFFF4B37), // Deep coral
+    ],
+    stops: [0.0, 0.5, 1.0],
+  );
+
+  static const lightSecondaryGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [
+      Color(0xFF6A8291), // Light muted blue
+      Color(0xFF5a6f77), // Databricks muted gray-blue
+      Color(0xFF4A5F67), // Deep muted blue
+    ],
+    stops: [0.0, 0.5, 1.0],
+  );
+
+  static const lightCardGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [
+      Color(0xFFFFFFFF), // Pure white
+      Color(0xFFFCFCFC), // Almost white
+      Color(0xFFFAFAFA), // Very light gray
+    ],
+    stops: [0.0, 0.5, 1.0],
+  );
+
+  static const lightSidebarGradient = LinearGradient(
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+    colors: [
+      Color(0xFFFAFAFA), // Light gray
+      Color(0xFFFFFFFF), // White
+      Color(0xFFFAFAFA), // Light gray
+    ],
+    stops: [0.0, 0.5, 1.0],
+  );
+
+  // Stadium Lights Theme Gradients
   static const darkPrimaryGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
     colors: [
-      Color(0xFF8B5CF6), // Purple
-      Color(0xFF6366F1), // Indigo
-      Color(0xFF3B82F6), // Blue
+      Color(0xFF9EFF00), // Bright lime
+      Color(0xFFBEFF00), // Electric lime
+      Color(0xFF7FD700), // Deep lime
     ],
     stops: [0.0, 0.5, 1.0],
   );
@@ -17,9 +73,9 @@ abstract class AppGradients {
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
     colors: [
-      Color(0xFF059669), // Emerald
-      Color(0xFF0891B2), // Cyan
-      Color(0xFF0284C7), // Sky
+      Color(0xFF0EA5E9), // Sky blue
+      Color(0xFF0284C7), // Deep sky
+      Color(0xFF0369A1), // Darker blue
     ],
     stops: [0.0, 0.5, 1.0],
   );
@@ -28,9 +84,9 @@ abstract class AppGradients {
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
     colors: [
-      Color(0xFFEF4444), // Red
-      Color(0xFFF97316), // Orange
-      Color(0xFFF59E0B), // Amber
+      Color(0xFFFFE700), // Bright gold
+      Color(0xFFFFD700), // Stadium gold
+      Color(0xFFFFB700), // Deep gold
     ],
     stops: [0.0, 0.5, 1.0],
   );
@@ -39,9 +95,9 @@ abstract class AppGradients {
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
     colors: [
-      Color(0xFF0F172A), // Slate 900
-      Color(0xFF1E293B), // Slate 800
-      Color(0xFF334155), // Slate 700
+      Color(0xFF0A0E1A), // Deep charcoal
+      Color(0xFF0F1420), // Midnight
+      Color(0xFF1A2332), // Midnight blue
     ],
     stops: [0.0, 0.5, 1.0],
   );
@@ -50,9 +106,9 @@ abstract class AppGradients {
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
     colors: [
-      Color(0xFF1E293B), // Slate 800
-      Color(0xFF334155), // Slate 700
-      Color(0xFF475569), // Slate 600
+      Color(0xFF1A2332), // Midnight blue
+      Color(0xFF1E2A3D), // Deeper blue
+      Color(0xFF233248), // Rich blue
     ],
     stops: [0.0, 0.5, 1.0],
   );
@@ -61,9 +117,9 @@ abstract class AppGradients {
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,
     colors: [
-      Color(0xFF0F172A), // Dark slate
-      Color(0xFF1E293B), // Medium slate
-      Color(0xFF0F172A), // Dark slate
+      Color(0xFF050810), // Deep black
+      Color(0xFF0A0E1A), // Charcoal
+      Color(0xFF050810), // Deep black
     ],
     stops: [0.0, 0.5, 1.0],
   );
@@ -72,8 +128,8 @@ abstract class AppGradients {
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
     colors: [
-      Color(0xFF6366F1), // Indigo
-      Color(0xFF8B5CF6), // Purple
+      Color(0xFF1A3A1A), // Dark green
+      Color(0xFF2A5A1A), // Forest green
     ],
     stops: [0.0, 1.0],
   );
@@ -82,8 +138,8 @@ abstract class AppGradients {
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
     colors: [
-      Color(0xFF374151), // Gray 700
-      Color(0xFF4B5563), // Gray 600
+      Color(0xFF2D3748), // Neutral gray
+      Color(0xFF374151), // Lighter gray
     ],
     stops: [0.0, 1.0],
   );
@@ -105,8 +161,8 @@ abstract class AppGradients {
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
     colors: [
-      Color(0xFF6366F1), // Indigo
-      Color(0xFF8B5CF6), // Purple
+      Color(0xFF9EFF00), // Bright lime
+      Color(0xFFBEFF00), // Electric lime
     ],
   );
 
@@ -114,8 +170,8 @@ abstract class AppGradients {
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
     colors: [
-      Color(0xFF10B981), // Emerald
-      Color(0xFF059669), // Emerald dark
+      Color(0xFF0EA5E9), // Sky blue
+      Color(0xFF0284C7), // Deep sky
     ],
   );
 
@@ -123,8 +179,8 @@ abstract class AppGradients {
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
     colors: [
-      Color(0xFFEF4444), // Red
-      Color(0xFFDC2626), // Red dark
+      Color(0xFFFF4444), // Bright red
+      Color(0xFFDC2626), // Deep red
     ],
   );
 }

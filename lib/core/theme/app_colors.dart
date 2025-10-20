@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 
 abstract class AppColors {
-  // Databricks Brand Colors for Light Mode
-  static const _lightBackground = Color(0xFFF9F7F5);
-  static const _lightForeground = Color(0xFF1b3139); // Databricks navy
-  static const _lightCard = Color(0xFFFFFFFF);
+  // Databricks Brand Colors for Light Mode - Enhanced Appeal
+  static const _lightBackground = Color(0xFFFFFFFF); // Pure white for clean look
+  static const _lightCard = Color(0xFFFAFAFA); // Very light gray for subtle depth
   static const _lightCardForeground = Color(0xFF1b3139);
   static const _lightPopover = Color(0xFFFFFFFF);
   static const _lightPopoverForeground = Color(0xFF1b3139);
@@ -12,17 +11,17 @@ abstract class AppColors {
   static const _lightPrimaryForeground = Color(0xFFFFFFFF);
   static const _lightSecondary = Color(0xFF5a6f77); // Databricks muted gray-blue
   static const _lightSecondaryForeground = Color(0xFF1b3139);
-  static const _lightMuted = Color(0xFFdce0e2); // Databricks light gray
+  static const _lightMuted = Color(0xFFF5F5F5); // Light gray with subtle warmth
   static const _lightMutedForeground = Color(0xFF5a6f77);
   static const _lightAccent = Color(0xFFeb1600); // Databricks deep red
   static const _lightAccentForeground = Color(0xFFFFFFFF);
   static const _lightDestructive = Color(0xFFbd2b26); // Databricks darker red
   static const _lightDestructiveForeground = Color(0xFFFFFFFF);
-  static const _lightBorder = Color(0xFFdce0e2);
-  static const _lightInput = Color(0xFFdce0e2);
+  static const _lightBorder = Color(0xFFE5E7EB); // Softer border
+  static const _lightInput = Color(0xFFFAFAFA);
   static const _lightRing = Color(0xFFff5f46);
 
-  static const _lightMessageBubble = Color(0xFFdce0e2);
+  static const _lightMessageBubble = Color(0xFFF5F5F5);
   static const _lightMessageBubbleOwn = Color(0xFFff5f46);
   static const _lightMessageText = Color(0xFF1b3139);
   static const _lightMessageTextOwn = Color(0xFFFFFFFF);
@@ -31,53 +30,52 @@ abstract class AppColors {
   static const _lightAwayStatus = Color(0xFFff5f46);
   static const _lightOfflineStatus = Color(0xFF5a6f77);
 
-  static const _lightSidebar = Color(0xFFFBFBFB);
+  static const _lightSidebar = Color(0xFFFAFAFA);
   static const _lightSidebarForeground = Color(0xFF1b3139);
   static const _lightSidebarPrimary = Color(0xFFff5f46);
   static const _lightSidebarPrimaryForeground = Color(0xFFFFFFFF);
-  static const _lightSidebarAccent = Color(0xFFdce0e2);
+  static const _lightSidebarAccent = Color(0xFFFFFFFF);
   static const _lightSidebarAccentForeground = Color(0xFF1b3139);
-  static const _lightSidebarBorder = Color(0xFFdce0e2);
+  static const _lightSidebarBorder = Color(0xFFE5E7EB);
   static const _lightSidebarRing = Color(0xFFff5f46);
 
-  // Enhanced Dark Theme with Gradient-Ready Colors
-  static const _darkBackground = Color(0xFF0F172A); // Darker for better gradient contrast
-  static const _darkForeground = Color(0xFFF8FAFC);
-  static const _darkCard = Color(0xFF1E293B); // Slightly lighter for gradient layering
-  static const _darkCardForeground = Color(0xFFF1F5F9);
-  static const _darkPopover = Color(0xFF1E293B);
-  static const _darkPopoverForeground = Color(0xFFF8FAFC);
-  static const _darkPrimary = Color(0xFF6366F1); // Vibrant for gradients
-  static const _darkPrimaryForeground = Color(0xFFFFFFFF);
-  static const _darkSecondary = Color(0xFF10B981); // Emerald for gradients
+  // Nordic Organic Theme - Refined organic sophistication for UNFI
+  static const _darkBackground = Color(0xFF0F1410); // Deep Forest Night
+  static const _darkCard = Color(0xFF1C211D); // Shadowed Grove
+  static const _darkCardForeground = Color(0xFFE5D9C8);
+  static const _darkPopover = Color(0xFF1C211D);
+  static const _darkPopoverForeground = Color(0xFFE5D9C8);
+  static const _darkPrimary = Color(0xFFA0B892); // Muted Moss - calm, natural
+  static const _darkPrimaryForeground = Color(0xFF0F1410);
+  static const _darkSecondary = Color(0xFF7A9B76); // Forest Sage - organic vitality
   static const _darkSecondaryForeground = Color(0xFFFFFFFF);
-  static const _darkMuted = Color(0xFF374151);
-  static const _darkMutedForeground = Color(0xFFCBD5E1);
-  static const _darkAccent = Color(0xFFF59E0B); // Amber for gradients
-  static const _darkAccentForeground = Color(0xFF171717);
-  static const _darkDestructive = Color(0xFFEF4444); // Red for gradients
+  static const _darkMuted = Color(0xFF252A26);
+  static const _darkMutedForeground = Color(0xFF9CA89F);
+  static const _darkAccent = Color(0xFFD4C5B9); // Oat Beige - wholesome grains
+  static const _darkAccentForeground = Color(0xFF0F1410);
+  static const _darkDestructive = Color(0xFFCF6679); // Soft organic red
   static const _darkDestructiveForeground = Color(0xFFFFFFFF);
-  static const _darkBorder = Color(0xFF374151);
-  static const _darkInput = Color(0xFF374151);
-  static const _darkRing = Color(0xFF8B5CF6); // Purple for gradients
+  static const _darkBorder = Color(0xFF2A312B);
+  static const _darkInput = Color(0xFF1C211D);
+  static const _darkRing = Color(0xFFA0B892); // Muted Moss ring
 
-  static const _darkMessageBubble = Color(0xFF374151); // Base for gradient overlay
-  static const _darkMessageBubbleOwn = Color(0xFF6366F1); // Primary for gradient
-  static const _darkMessageText = Color(0xFFF1F5F9);
+  static const _darkMessageBubble = Color(0xFF252A26); // Neutral forest gray
+  static const _darkMessageBubbleOwn = Color(0xFF2A3A2C); // Dark sage base
+  static const _darkMessageText = Color(0xFFE5D9C8);
   static const _darkMessageTextOwn = Color(0xFFFFFFFF);
-  static const _darkTypingIndicator = Color(0xFF94A3B8);
-  static const _darkOnlineStatus = Color(0xFF10B981);
-  static const _darkAwayStatus = Color(0xFFF59E0B);
-  static const _darkOfflineStatus = Color(0xFF6B7280);
+  static const _darkTypingIndicator = Color(0xFF7A9B76);
+  static const _darkOnlineStatus = Color(0xFF7A9B76); // Forest Sage for active
+  static const _darkAwayStatus = Color(0xFFD4C5B9); // Oat Beige for away
+  static const _darkOfflineStatus = Color(0xFF4A5248);
 
-  static const _darkSidebar = Color(0xFF171717);
-  static const _darkSidebarForeground = Color(0xFFF8FAFC);
-  static const _darkSidebarPrimary = Color(0xFFF1F5F9);
-  static const _darkSidebarPrimaryForeground = Color(0xFF171717);
-  static const _darkSidebarAccent = Color(0xFF334155);
-  static const _darkSidebarAccentForeground = Color(0xFFF1F5F9);
-  static const _darkSidebarBorder = Color(0xFF334155);
-  static const _darkSidebarRing = Color(0xFF818CF8);
+  static const _darkSidebar = Color(0xFF0A0D0A); // Deeper forest night
+  static const _darkSidebarForeground = Color(0xFFE5D9C8);
+  static const _darkSidebarPrimary = Color(0xFFA0B892); // Muted Moss
+  static const _darkSidebarPrimaryForeground = Color(0xFF0F1410);
+  static const _darkSidebarAccent = Color(0xFF1C211D);
+  static const _darkSidebarAccentForeground = Color(0xFFE5D9C8);
+  static const _darkSidebarBorder = Color(0xFF1C211D);
+  static const _darkSidebarRing = Color(0xFFA0B892);
 
   static const List<Color> _lightChartColors = [
     Color(0xFF6366F1),
@@ -88,16 +86,16 @@ abstract class AppColors {
   ];
 
   static const List<Color> _darkChartColors = [
-    Color(0xFF818CF8),
-    Color(0xFF34D399),
-    Color(0xFFFCD34D),
-    Color(0xFFF87171),
-    Color(0xFFC084FC),
+    Color(0xFFA0B892), // Muted Moss
+    Color(0xFF7A9B76), // Forest Sage
+    Color(0xFFD4C5B9), // Oat Beige
+    Color(0xFF9CA89F), // Muted Gray-Green
+    Color(0xFFCF6679), // Soft Organic Red
   ];
 
   // App logos
   static const String lightLogo = 'assets/images/light-Databricks-Emblem.png';
-  static const String darkLogo = 'assets/images/dark-dominos-logo.png';
+  static const String darkLogo = 'assets/images/dark-unfi-logo.jpg';
 
   static ColorScheme get lightColorScheme => const ColorScheme.light(
         brightness: Brightness.light,

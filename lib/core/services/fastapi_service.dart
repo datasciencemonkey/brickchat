@@ -1,8 +1,18 @@
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 class FastApiService {
-  static const String baseUrl = 'http://localhost:8000';
+  // Dynamic base URL that works in both development and production
+  static String get baseUrl {
+    if (kIsWeb) {
+      // In web/production, use relative URLs (same origin as the app)
+      // This works for both localhost development and Databricks Apps deployment
+      return ''; // Empty string means same origin
+    }
+    // For non-web platforms (desktop), use localhost
+    return 'http://localhost:8000';
+  }
 
   /// Sends a message to the FastAPI backend and returns complete response (DEFAULT)
   /// Uses non-streaming mode (stream=false) for faster, complete responses
@@ -113,10 +123,14 @@ class FastApiService {
                   return;
                 } else if (data['done'] == true) {
                   return;
+                } else if (data['metadata'] != null) {
+                  yield {'metadata': data['metadata']};
                 } else if (data['content'] != null) {
                   yield {'content': data['content']};
                 } else if (data['footnotes'] != null) {
                   yield {'footnotes': data['footnotes']};
+                } else if (data['assistant_message_id'] != null) {
+                  yield {'assistant_message_id': data['assistant_message_id']};
                 }
               } catch (e) {
                 // Skip malformed chunks
@@ -250,6 +264,28 @@ class FastApiService {
     } catch (e) {
       print('Error fetching thread messages: $e');
       return [];
+    }
+  }
+
+  /// Get current chat configuration including agent endpoint
+  static Future<Map<String, dynamic>> getChatConfig() async {
+    try {
+      final url = Uri.parse('$baseUrl/api/chat/config');
+
+      final response = await http.get(
+        url,
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        print('Error fetching chat config: ${response.statusCode} - ${response.body}');
+        return {'agent_endpoint': 'Unknown'};
+      }
+    } catch (e) {
+      print('Error fetching chat config: $e');
+      return {'agent_endpoint': 'Unknown'};
     }
   }
 }

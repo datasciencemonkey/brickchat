@@ -5,9 +5,9 @@
 .packages
 .pub-cache/
 .pub/
-build/
-**/build/
 **/doc/api/
+build/*
+deployment/build/*
 **/ios/Flutter/.last_build_id
 
 # Android
@@ -74,7 +74,7 @@ linux/.dart_tool/
 *.sublime-project
 .DS_Store
 .atom/
-.build/
+
 .buildlog/
 .history
 .svn/
@@ -151,3 +151,4 @@ staticfiles/
 .idea/
 # macOS
 .DS_Store
+

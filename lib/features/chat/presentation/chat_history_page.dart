@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/theme_provider.dart';
-import '../../../core/constants/app_constants.dart';
 import '../../../core/services/fastapi_service.dart';
 
 class ChatHistoryPage extends ConsumerStatefulWidget {
@@ -292,6 +291,7 @@ class _ChatHistoryPageState extends ConsumerState<ChatHistoryPage> {
                           final lastMessageTime = _formatTimeAgo(
                             thread['last_message_time']
                           );
+                          final agentEndpoint = thread['agent_endpoint']?.toString() ?? 'Unknown';
 
                           return InkWell(
                             onTap: () => _selectThread(thread['thread_id']),
@@ -323,12 +323,54 @@ class _ChatHistoryPageState extends ConsumerState<ChatHistoryPage> {
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                   const SizedBox(height: 4),
-                                  Text(
-                                    'Last message $lastMessageTime',
-                                    style: TextStyle(
-                                      color: appColors.mutedForeground,
-                                      fontSize: 13,
-                                    ),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          'Last message $lastMessageTime',
+                                          style: TextStyle(
+                                            color: appColors.mutedForeground,
+                                            fontSize: 13,
+                                          ),
+                                        ),
+                                      ),
+                                      // Agent endpoint badge
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 3,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: isDark
+                                              ? appColors.muted.withValues(alpha: 0.3)
+                                              : appColors.muted.withValues(alpha: 0.5),
+                                          borderRadius: BorderRadius.circular(10),
+                                          border: Border.all(
+                                            color: appColors.sidebarBorder.withValues(alpha: 0.2),
+                                            width: 0.5,
+                                          ),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              Icons.smart_toy_outlined,
+                                              size: 11,
+                                              color: appColors.mutedForeground.withValues(alpha: 0.7),
+                                            ),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              agentEndpoint,
+                                              style: TextStyle(
+                                                fontSize: 10,
+                                                color: appColors.mutedForeground.withValues(alpha: 0.8),
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ],
                               ),

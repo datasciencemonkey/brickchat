@@ -3,7 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 /// Provider for stream results setting
 final streamResultsProvider = StateNotifierProvider<StreamResultsNotifier, bool>((ref) {
-  return StreamResultsNotifier(ref);
+  return StreamResultsNotifier();
 });
 
 /// Provider for TTS provider selection
@@ -18,7 +18,7 @@ final ttsVoiceProvider = StateNotifierProvider<TtsVoiceNotifier, String>((ref) {
 
 /// Provider for eager mode (auto-play TTS)
 final eagerModeProvider = StateNotifierProvider<EagerModeNotifier, bool>((ref) {
-  return EagerModeNotifier(ref);
+  return EagerModeNotifier();
 });
 
 /// Settings keys
@@ -105,9 +105,7 @@ class DeepgramVoices {
 
 /// Stream results setting notifier
 class StreamResultsNotifier extends StateNotifier<bool> {
-  final Ref _ref;
-
-  StreamResultsNotifier(this._ref) : super(false) {
+  StreamResultsNotifier() : super(false) {
     _loadSetting();
   }
 
@@ -210,9 +208,7 @@ extension StreamResultsRef on WidgetRef {
 
 /// Eager mode setting notifier
 class EagerModeNotifier extends StateNotifier<bool> {
-  final Ref _ref;
-
-  EagerModeNotifier(this._ref) : super(false) {
+  EagerModeNotifier() : super(false) {
     _loadSetting();
   }
 

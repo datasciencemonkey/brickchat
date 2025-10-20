@@ -1,0 +1,58 @@
+# Databricks Apps Configuration
+# This file configures how your application runs in Databricks Apps
+
+# Command to start the application
+command:
+  - "uvicorn"
+  - "app:app"
+  - "--host"
+  - "0.0.0.0"
+  - "--port"
+  - "8000"
+
+
+# Environment variables
+# Use Databricks secrets for sensitive values
+env:
+  # Databricks API configuration
+  - name: DATABRICKS_TOKEN
+    valueFrom: 'DATABRICKS_TOKEN'
+
+  - name: DATABRICKS_MODEL
+    value: 'mas-7080a757-endpoint'
+  
+  - name: REPLICATE_API_TOKEN
+    valueFrom: 'REPLICATE_API_TOKEN'
+  
+  - name: DEEPGRAM_API_TOKEN
+    valueFrom: 'DEEPGRAM_API_TOKEN'
+
+  # Database configuration
+  - name: PGHOST
+    value: 'instance-f0c661f6-4c02-4252-8a38-137a58dfc5bd.database.cloud.databricks.com'
+  
+  - name: DATABRICKS_BASE_URL
+    value: 'https://e2-demo-field-eng.cloud.databricks.com/serving-endpoints'
+
+  - name: PGUSER
+    value: 'service_brickchat'
+  
+  - name: PGDATABASE
+    value: 'brickchat'
+
+  - name: PG_PASS
+    valueFrom: 'PG_PASS'
+
+  - name: DATABRICKS_LLM_MODEL
+    value: 'databricks-gemma-3-12b'
+
+# Resource configuration (optional)
+# resources:
+#   cpu: 1
+#   memory: 2Gi
+
+# Health check configuration (optional)
+# healthcheck:
+#   path: /health
+#   interval: 30s
+#   timeout: 5s

@@ -40,6 +40,7 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
   bool _showSpeechToText = false;
   String? _currentThreadId; // Track current thread ID from backend
   final String _userId = "dev_user"; // Default user ID
+  String? _currentAgentEndpoint; // Track current agent endpoint
 
   // Audio player state
   Audio? _currentAudio;
@@ -55,7 +56,20 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
     super.initState();
     _sidebarController = SidebarXController(selectedIndex: 0, extended: false);
     _loadInitialMessages();
+    _loadAgentEndpoint();
+  }
 
+  Future<void> _loadAgentEndpoint() async {
+    try {
+      final config = await FastApiService.getChatConfig();
+      if (mounted) {
+        setState(() {
+          _currentAgentEndpoint = config['agent_endpoint'];
+        });
+      }
+    } catch (e) {
+      _log.warning('Failed to load agent endpoint: $e');
+    }
   }
 
   @override
@@ -166,6 +180,15 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
       // Hide speech to text if showing
       _showSpeechToText = false;
 
+      // Extract agent endpoint from the last assistant message
+      _currentAgentEndpoint = null;
+      for (final message in messages.reversed) {
+        if (message['message_role'] == 'assistant' && message['agent_endpoint'] != null) {
+          _currentAgentEndpoint = message['agent_endpoint'];
+          break;
+        }
+      }
+
       // Load messages from the thread
       for (final message in messages) {
         final isUserMessage = message['message_role'] == 'user';
@@ -197,6 +220,7 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
           author: isUserMessage ? 'You' : 'Assistant',
           threadId: threadId,
           messageId: message['message_id'],
+          agentEndpoint: message['agent_endpoint'],
           footnotes: footnotes,
         ));
 
@@ -296,15 +320,23 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
           userId: _userId,
         )) {
           if (mounted) {
-            // Handle metadata (thread_id, message_ids)
+            // Handle metadata (thread_id, message_ids, agent_endpoint)
             if (chunk.containsKey('metadata')) {
               final metadata = chunk['metadata'] as Map<String, dynamic>;
-              _currentThreadId = metadata['thread_id'];
+              setState(() {
+                _currentThreadId = metadata['thread_id'];
+                _currentAgentEndpoint = metadata['agent_endpoint'];
+              });
               // Update user message with backend message ID
               final userMsgIndex = _messages.indexWhere((msg) => msg.id == message.id);
               if (userMsgIndex != -1) {
                 _messages[userMsgIndex].threadId = _currentThreadId;
                 _messages[userMsgIndex].messageId = metadata['user_message_id'];
+              }
+              // Update assistant message with agent endpoint
+              final assistantMsgIndex = _messages.indexWhere((msg) => msg.id == assistantMessageId);
+              if (assistantMsgIndex != -1) {
+                _messages[assistantMsgIndex].agentEndpoint = _currentAgentEndpoint;
               }
             }
             // Handle assistant message ID
@@ -691,9 +723,15 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
     return SidebarXTheme(
       margin: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        gradient: isDark ? AppGradients.darkSidebarGradient : null,
-        color: isDark ? null : appColors.sidebar,
+        gradient: isDark ? AppGradients.darkSidebarGradient : AppGradients.lightSidebarGradient,
         borderRadius: BorderRadius.circular(20),
+        boxShadow: isDark ? null : [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       hoverColor: appColors.sidebarAccent,
       textStyle: TextStyle(
@@ -755,8 +793,14 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
     return SidebarXTheme(
       width: AppConstants.sidebarWidth,
       decoration: BoxDecoration(
-        gradient: isDark ? AppGradients.darkSidebarGradient : null,
-        color: isDark ? null : appColors.sidebar,
+        gradient: isDark ? AppGradients.darkSidebarGradient : AppGradients.lightSidebarGradient,
+        boxShadow: isDark ? null : [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       margin: const EdgeInsets.only(right: 10),
     );
@@ -849,14 +893,57 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
       ],
     );
 
-    if (isDark) {
-      return GradientContainer(
-        gradient: AppGradients.darkBackgroundGradient,
-        child: body,
-      );
-    }
+    return GradientContainer(
+      gradient: isDark
+          ? AppGradients.darkBackgroundGradient
+          : AppGradients.lightBackgroundGradient,
+      child: body,
+    );
+  }
 
-    return body;
+  Widget _buildAgentEndpointDisplay() {
+    final appColors = context.appColors;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    // Get the endpoint name, use 'Unknown' if not set
+    final endpointName = _currentAgentEndpoint ?? 'Unknown';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: 12,
+        vertical: 6,
+      ),
+      decoration: BoxDecoration(
+        color: isDark
+            ? appColors.messageBubble.withValues(alpha: 0.6)
+            : appColors.muted.withValues(alpha: 0.7),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: appColors.sidebarBorder.withValues(alpha: 0.2),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.smart_toy_outlined,
+            size: 13,
+            color: appColors.sidebarPrimary.withValues(alpha: 0.7),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            'Agent Endpoint: $endpointName',
+            style: TextStyle(
+              fontSize: 10.5,
+              color: appColors.messageText.withValues(alpha: 0.65),
+              fontWeight: FontWeight.w500,
+              letterSpacing: 0.3,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildMessageList() {
@@ -1325,6 +1412,13 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
             ),
             const SizedBox(height: AppConstants.spacingSm),
           ],
+
+          // Agent endpoint display (always visible in bottom right)
+          Align(
+            alignment: Alignment.centerRight,
+            child: _buildAgentEndpointDisplay(),
+          ),
+          const SizedBox(height: AppConstants.spacingSm),
 
           // Input row
           Row(
@@ -1904,6 +1998,7 @@ class ChatMessage {
   List<Map<String, String>> footnotes; // List of footnotes with id and content (mutable for streaming)
   String? threadId; // Thread ID from backend
   String? messageId; // Message ID from backend database
+  String? agentEndpoint; // Agent/model endpoint used for this message
 
   ChatMessage({
     required this.id,
@@ -1913,6 +2008,7 @@ class ChatMessage {
     required this.author,
     this.threadId,
     this.messageId,
+    this.agentEndpoint,
     this.isLiked,
     this.isStreaming = false,
     List<Map<String, String>>? footnotes,
