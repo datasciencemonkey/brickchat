@@ -95,7 +95,7 @@ abstract class AppColors {
 
   // App logos
   static const String lightLogo = 'assets/images/light-Databricks-Emblem.png';
-  static const String darkLogo = 'assets/images/dark-unfi-logo.jpg';
+  static const String darkLogo = 'assets/images/dark-unfi-logo.png';
 
   static ColorScheme get lightColorScheme => const ColorScheme.light(
         brightness: Brightness.light,

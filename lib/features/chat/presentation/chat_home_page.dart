@@ -21,6 +21,7 @@ import '../../settings/presentation/settings_page.dart';
 import '../../settings/providers/settings_provider.dart';
 import '../../../core/services/fastapi_service.dart';
 import 'chat_history_page.dart';
+import 'widgets/welcome_hero_screen.dart';
 // Removed TTS text cleaner - now handled by backend LLM
 
 class ChatHomePage extends ConsumerStatefulWidget {
@@ -41,6 +42,7 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
   String? _currentThreadId; // Track current thread ID from backend
   final String _userId = "dev_user"; // Default user ID
   String? _currentAgentEndpoint; // Track current agent endpoint
+  bool _showWelcomeScreen = true; // Track if welcome screen should be shown
 
   // Audio player state
   Audio? _currentAudio;
@@ -55,7 +57,7 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
   void initState() {
     super.initState();
     _sidebarController = SidebarXController(selectedIndex: 0, extended: false);
-    _loadInitialMessages();
+    // Don't load initial messages on welcome screen
     _loadAgentEndpoint();
   }
 
@@ -116,8 +118,8 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
       // Hide speech to text if showing
       _showSpeechToText = false;
 
-      // Add welcome message for the new thread
-      _loadInitialMessages();
+      // Show welcome screen again
+      _showWelcomeScreen = true;
     });
 
     // Show confirmation snackbar
@@ -179,6 +181,9 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
 
       // Hide speech to text if showing
       _showSpeechToText = false;
+
+      // Hide welcome screen when loading a thread
+      _showWelcomeScreen = false;
 
       // Extract agent endpoint from the last assistant message
       _currentAgentEndpoint = null;
@@ -259,6 +264,7 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
       _messages.add(message);
       _messageController.clear();
       _showSpeechToText = false; // Hide speech widget after sending
+      _showWelcomeScreen = false; // Hide welcome screen when sending first message
     });
 
     // Add user message to conversation history
@@ -884,14 +890,31 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
   Widget _buildChatBody() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    Widget body = Column(
-      children: [
-        Expanded(
-          child: _buildMessageList(),
-        ),
-        _buildMessageInput(),
-      ],
-    );
+    Widget body;
+
+    if (_showWelcomeScreen) {
+      // Show welcome screen
+      body = WelcomeHeroScreen(
+        onGetStarted: () {
+          setState(() {
+            _showWelcomeScreen = false;
+            _loadInitialMessages(); // Load welcome message after getting started
+          });
+          // Focus the message input
+          _messageInputFocus.requestFocus();
+        },
+      );
+    } else {
+      // Show normal chat interface
+      body = Column(
+        children: [
+          Expanded(
+            child: _buildMessageList(),
+          ),
+          _buildMessageInput(),
+        ],
+      );
+    }
 
     return GradientContainer(
       gradient: isDark

@@ -19,7 +19,7 @@ env:
     valueFrom: 'DATABRICKS_TOKEN'
 
   - name: DATABRICKS_MODEL
-    value: 'mas-7080a757-endpoint'
+    value: 'mas-568ad505-endpoint'
   
   - name: REPLICATE_API_TOKEN
     valueFrom: 'REPLICATE_API_TOKEN'
