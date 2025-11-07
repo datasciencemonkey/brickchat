@@ -19,7 +19,7 @@ env:
     valueFrom: 'DATABRICKS_TOKEN'
 
   - name: DATABRICKS_MODEL
-    value: 'mas-568ad505-endpoint'
+    value: 'mas-4d38e8a2-endpoint'
   
   - name: REPLICATE_API_TOKEN
     valueFrom: 'REPLICATE_API_TOKEN'
@@ -29,10 +29,10 @@ env:
 
   # Database configuration
   - name: PGHOST
-    value: 'instance-f0c661f6-4c02-4252-8a38-137a58dfc5bd.database.cloud.databricks.com'
+    value: 'instance-45ddd4b2-3f8e-407a-9385-7f823755d11c.database.cloud.databricks.com'
   
   - name: DATABRICKS_BASE_URL
-    value: 'https://e2-demo-field-eng.cloud.databricks.com/serving-endpoints'
+    value: 'https://fe-vm-vdm-serverless-jpckvw.cloud.databricks.com/serving-endpoints'
 
   - name: PGUSER
     value: 'service_brickchat'
