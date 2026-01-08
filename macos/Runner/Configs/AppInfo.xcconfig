@@ -12,3 +12,6 @@ PRODUCT_BUNDLE_IDENTIFIER = com.example.brickchat
 
 // The copyright displayed in application information
 PRODUCT_COPYRIGHT = Copyright © 2025 com.example. All rights reserved.
+
+// Minimum macOS deployment target
+MACOS_DEPLOYMENT_TARGET = 11.0

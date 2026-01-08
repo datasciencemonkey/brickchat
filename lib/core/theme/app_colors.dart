@@ -39,43 +39,43 @@ abstract class AppColors {
   static const _lightSidebarBorder = Color(0xFFE5E7EB);
   static const _lightSidebarRing = Color(0xFFff5f46);
 
-  // Nordic Organic Theme - Refined organic sophistication for UNFI
-  static const _darkBackground = Color(0xFF0F1410); // Deep Forest Night
-  static const _darkCard = Color(0xFF1C211D); // Shadowed Grove
-  static const _darkCardForeground = Color(0xFFE5D9C8);
-  static const _darkPopover = Color(0xFF1C211D);
-  static const _darkPopoverForeground = Color(0xFFE5D9C8);
-  static const _darkPrimary = Color(0xFFA0B892); // Muted Moss - calm, natural
-  static const _darkPrimaryForeground = Color(0xFF0F1410);
-  static const _darkSecondary = Color(0xFF7A9B76); // Forest Sage - organic vitality
-  static const _darkSecondaryForeground = Color(0xFFFFFFFF);
-  static const _darkMuted = Color(0xFF252A26);
-  static const _darkMutedForeground = Color(0xFF9CA89F);
-  static const _darkAccent = Color(0xFFD4C5B9); // Oat Beige - wholesome grains
-  static const _darkAccentForeground = Color(0xFF0F1410);
-  static const _darkDestructive = Color(0xFFCF6679); // Soft organic red
+  // BJ's Club - Electric Warehouse: Bold neon with deep midnight backdrop
+  static const _darkBackground = Color(0xFF0A0A14); // Deep midnight blue-black
+  static const _darkCard = Color(0xFF12121F); // Rich dark purple-black
+  static const _darkCardForeground = Color(0xFFE8E8FF);
+  static const _darkPopover = Color(0xFF1A1A2E);
+  static const _darkPopoverForeground = Color(0xFFE8E8FF);
+  static const _darkPrimary = Color(0xFF00D4FF); // Electric cyan - BJ's signature
+  static const _darkPrimaryForeground = Color(0xFF0A0A14);
+  static const _darkSecondary = Color(0xFFFF00FF); // Hot magenta
+  static const _darkSecondaryForeground = Color(0xFF0A0A14);
+  static const _darkMuted = Color(0xFF1E1E32);
+  static const _darkMutedForeground = Color(0xFF9090B0);
+  static const _darkAccent = Color(0xFFFFE500); // Electric yellow
+  static const _darkAccentForeground = Color(0xFF0A0A14);
+  static const _darkDestructive = Color(0xFFFF3366); // Neon pink-red
   static const _darkDestructiveForeground = Color(0xFFFFFFFF);
-  static const _darkBorder = Color(0xFF2A312B);
-  static const _darkInput = Color(0xFF1C211D);
-  static const _darkRing = Color(0xFFA0B892); // Muted Moss ring
+  static const _darkBorder = Color(0xFF2A2A45);
+  static const _darkInput = Color(0xFF16162A);
+  static const _darkRing = Color(0xFF00D4FF); // Electric cyan ring
 
-  static const _darkMessageBubble = Color(0xFF252A26); // Neutral forest gray
-  static const _darkMessageBubbleOwn = Color(0xFF2A3A2C); // Dark sage base
-  static const _darkMessageText = Color(0xFFE5D9C8);
+  static const _darkMessageBubble = Color(0xFF1E1E32); // Dark purple-gray
+  static const _darkMessageBubbleOwn = Color(0xFF002B3D); // Deep cyan base
+  static const _darkMessageText = Color(0xFFE8E8FF);
   static const _darkMessageTextOwn = Color(0xFFFFFFFF);
-  static const _darkTypingIndicator = Color(0xFF7A9B76);
-  static const _darkOnlineStatus = Color(0xFF7A9B76); // Forest Sage for active
-  static const _darkAwayStatus = Color(0xFFD4C5B9); // Oat Beige for away
-  static const _darkOfflineStatus = Color(0xFF4A5248);
+  static const _darkTypingIndicator = Color(0xFF00D4FF);
+  static const _darkOnlineStatus = Color(0xFF00FF88); // Neon green
+  static const _darkAwayStatus = Color(0xFFFFE500); // Electric yellow
+  static const _darkOfflineStatus = Color(0xFF4A4A6A);
 
-  static const _darkSidebar = Color(0xFF0A0D0A); // Deeper forest night
-  static const _darkSidebarForeground = Color(0xFFE5D9C8);
-  static const _darkSidebarPrimary = Color(0xFFA0B892); // Muted Moss
-  static const _darkSidebarPrimaryForeground = Color(0xFF0F1410);
-  static const _darkSidebarAccent = Color(0xFF1C211D);
-  static const _darkSidebarAccentForeground = Color(0xFFE5D9C8);
-  static const _darkSidebarBorder = Color(0xFF1C211D);
-  static const _darkSidebarRing = Color(0xFFA0B892);
+  static const _darkSidebar = Color(0xFF06060E); // Deepest black-purple
+  static const _darkSidebarForeground = Color(0xFFE8E8FF);
+  static const _darkSidebarPrimary = Color(0xFF00D4FF); // Electric cyan
+  static const _darkSidebarPrimaryForeground = Color(0xFF0A0A14);
+  static const _darkSidebarAccent = Color(0xFF1A1A2E);
+  static const _darkSidebarAccentForeground = Color(0xFFE8E8FF);
+  static const _darkSidebarBorder = Color(0xFF1A1A2E);
+  static const _darkSidebarRing = Color(0xFF00D4FF);
 
   static const List<Color> _lightChartColors = [
     Color(0xFF6366F1),
@@ -86,16 +86,16 @@ abstract class AppColors {
   ];
 
   static const List<Color> _darkChartColors = [
-    Color(0xFFA0B892), // Muted Moss
-    Color(0xFF7A9B76), // Forest Sage
-    Color(0xFFD4C5B9), // Oat Beige
-    Color(0xFF9CA89F), // Muted Gray-Green
-    Color(0xFFCF6679), // Soft Organic Red
+    Color(0xFF00D4FF), // Electric cyan
+    Color(0xFFFF00FF), // Hot magenta
+    Color(0xFFFFE500), // Electric yellow
+    Color(0xFF00FF88), // Neon green
+    Color(0xFFFF3366), // Neon pink-red
   ];
 
   // App logos
   static const String lightLogo = 'assets/images/light-Databricks-Emblem.png';
-  static const String darkLogo = 'assets/images/dark-unfi-logo.png';
+  static const String darkLogo = 'assets/images/dark-bjs-logo.png';
 
   static ColorScheme get lightColorScheme => const ColorScheme.light(
         brightness: Brightness.light,

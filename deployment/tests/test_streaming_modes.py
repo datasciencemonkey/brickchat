@@ -49,7 +49,7 @@ def test_streaming_mode():
         response = requests.post(
             f"{BASE_URL}/api/chat/send",
             json={
-                "message": "How can you help me?",
+                "message": "Tell me a short joke",
                 "stream": True
             },
             stream=True,

@@ -19,29 +19,29 @@ env:
     valueFrom: 'DATABRICKS_TOKEN'
 
   - name: DATABRICKS_MODEL
-    value: 'mas-4d38e8a2-endpoint'
-  
+    value: 'ka-49410530-endpoint'
+
   - name: REPLICATE_API_TOKEN
     valueFrom: 'REPLICATE_API_TOKEN'
-  
+
   - name: DEEPGRAM_API_TOKEN
     valueFrom: 'DEEPGRAM_API_TOKEN'
 
   # Database configuration
   - name: PGHOST
-    value: 'instance-45ddd4b2-3f8e-407a-9385-7f823755d11c.database.cloud.databricks.com'
-  
+    value: 'ep-red-frost-d2yej5yx.database.us-east-1.cloud.databricks.com'
+
   - name: DATABRICKS_BASE_URL
-    value: 'https://fe-vm-vdm-serverless-jpckvw.cloud.databricks.com/serving-endpoints'
+    value: 'https://fevm-serverless-9cefok.cloud.databricks.com/serving-endpoints'
 
   - name: PGUSER
     value: 'service_brickchat'
-  
+
   - name: PGDATABASE
     value: 'brickchat'
 
   - name: PG_PASS
-    valueFrom: 'PG_PASS'
+    value: 'npg_wnEr0zdlb2SY'
 
   - name: DATABRICKS_LLM_MODEL
     value: 'databricks-gemma-3-12b'

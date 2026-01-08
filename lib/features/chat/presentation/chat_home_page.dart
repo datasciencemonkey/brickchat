@@ -16,7 +16,8 @@ import '../../../core/constants/app_constants.dart';
 import '../../../shared/widgets/theme_toggle.dart';
 import '../../../shared/widgets/speech_to_text_widget.dart';
 import '../../../shared/widgets/collapsible_reasoning_widget.dart';
-import '../../../shared/widgets/footnotes_accordion.dart';
+import '../../../shared/widgets/footnotes_accordion.dart'; // Now exports SourcesAccordion
+import '../../../shared/widgets/particles_widget.dart';
 import '../../settings/presentation/settings_page.dart';
 import '../../settings/providers/settings_provider.dart';
 import '../../../core/services/fastapi_service.dart';
@@ -49,6 +50,7 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
   String? _currentPlayingMessageId;
   bool _isAudioPlaying = false;
   bool _isAudioLoading = false; // Track if TTS is being generated
+  final Map<String, List<int>> _ttsAudioCache = {}; // Cache TTS audio bytes per message ID
 
   // SidebarX controller
   late SidebarXController _sidebarController;
@@ -317,7 +319,7 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
 
         // Streaming mode - show response word by word
         final responseBuffer = StringBuffer();
-        List<Map<String, String>> footnotes = [];
+        List<Map<String, dynamic>> citations = [];
 
         await for (final chunk in FastApiService.sendMessageStream(
           messageText,
@@ -365,20 +367,45 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
                 _scrollToBottom();
               }
             }
-            // Handle footnotes
-            else if (chunk.containsKey('footnotes')) {
-              final footnotesList = chunk['footnotes'] as List<dynamic>;
-              for (final footnote in footnotesList) {
-                footnotes.add({
-                  'id': footnote['id'].toString(),
-                  'content': footnote['content'].toString(),
+            // Handle reasoning (comes after content is done, needs to be prepended)
+            else if (chunk.containsKey('reasoning')) {
+              final reasoning = chunk['reasoning'] as String;
+              // Prepend reasoning to the response (it comes with <think> tags from backend)
+              final currentContent = responseBuffer.toString();
+              responseBuffer.clear();
+              responseBuffer.write(reasoning);
+              responseBuffer.write(currentContent);
+
+              // Update the message text with reasoning prepended
+              final messageIndex = _messages.indexWhere((msg) => msg.id == assistantMessageId);
+              if (messageIndex != -1) {
+                _messages[messageIndex].text = responseBuffer.toString();
+                setState(() {});
+              }
+            }
+            // Handle citations (sources from the model)
+            else if (chunk.containsKey('citations')) {
+              final citationsList = chunk['citations'] as List<dynamic>;
+              for (final citation in citationsList) {
+                citations.add({
+                  'id': citation['id']?.toString() ?? '',
+                  'title': citation['title']?.toString() ?? 'Source',
+                  'url': citation['url']?.toString() ?? '',
+                  'content_index': citation['content_index'] ?? 0,
                 });
               }
 
-              // Update the message footnotes
+              // Update the message citations
               final messageIndex = _messages.indexWhere((msg) => msg.id == assistantMessageId);
               if (messageIndex != -1) {
-                _messages[messageIndex].footnotes = footnotes;
+                _messages[messageIndex].citations = citations;
+
+                // Post-process text to add inline citation markers based on content_index
+                final annotatedText = _insertCitationMarkers(
+                  responseBuffer.toString(),
+                  citations,
+                );
+                _messages[messageIndex].text = annotatedText;
                 setState(() {});
               }
             }
@@ -920,7 +947,23 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
       gradient: isDark
           ? AppGradients.darkBackgroundGradient
           : AppGradients.lightBackgroundGradient,
-      child: body,
+      child: Stack(
+        children: [
+          // Starfield effect (only in dark mode)
+          if (isDark)
+            Positioned.fill(
+              child: ParticlesWidget(
+                quantity: 120,
+                ease: 80,
+                color: const Color(0xFFFFE4B5), // Warm starlight color
+                staticity: 50,
+                size: 2.5,
+              ),
+            ),
+          // Chat content on top
+          body,
+        ],
+      ),
     );
   }
 
@@ -1093,28 +1136,10 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
                               ),
                             ),
                 ),
-                // Footnotes accordion (only for assistant messages)
-                if (!message.isOwn && message.footnotes.isNotEmpty)
-                  FootnotesAccordion(
-                    footnotes: message.footnotes,
-                    styleSheet: MarkdownStyleSheet(
-                      p: TextStyle(
-                        color: appColors.messageText,
-                        fontSize: 12,
-                        height: 1.4,
-                      ),
-                      code: TextStyle(
-                        backgroundColor: appColors.muted.withValues(alpha: 0.3),
-                        color: appColors.messageText,
-                        fontFamily: 'monospace',
-                        fontSize: 11,
-                      ),
-                      strong: TextStyle(
-                        color: appColors.messageText,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                      ),
-                    ),
+                // Sources accordion (only for assistant messages with citations)
+                if (!message.isOwn && message.citations.isNotEmpty)
+                  SourcesAccordion(
+                    citations: message.citations,
                   ),
                 const SizedBox(height: 4),
                 Row(
@@ -1363,6 +1388,25 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
                                     ),
                                     child: Icon(
                                       Icons.stop,
+                                      size: 12,
+                                      color: appColors.mutedForeground,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                              // Download button (shown when audio is cached for this message)
+                              if (_ttsAudioCache.containsKey(message.id)) ...[
+                                const SizedBox(width: 4),
+                                GestureDetector(
+                                  onTap: () => _downloadTtsAudio(message.id),
+                                  child: Container(
+                                    padding: const EdgeInsets.all(4),
+                                    decoration: BoxDecoration(
+                                      color: appColors.input.withValues(alpha: 0.1),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Icon(
+                                      Icons.download,
                                       size: 12,
                                       color: appColors.mutedForeground,
                                     ),
@@ -1744,6 +1788,85 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
     }
   }
 
+  void _downloadTtsAudio(String messageId) {
+    final audioBytes = _ttsAudioCache[messageId];
+    if (audioBytes == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'No audio available to download',
+            style: TextStyle(fontSize: 12, color: Colors.white),
+          ),
+          duration: Duration(seconds: 2),
+          backgroundColor: Colors.orange.withValues(alpha: 0.85),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    try {
+      // Convert bytes to base64 and create download link
+      final base64Audio = base64Encode(audioBytes);
+      final dataUrl = 'data:audio/mpeg;base64,$base64Audio';
+
+      // Create timestamp for filename
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final filename = 'tts_audio_$timestamp.mp3';
+
+      // Use JS interop to trigger download
+      _triggerDownload(dataUrl, filename);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.download_done,
+                size: 14,
+                color: Colors.white,
+              ),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  'Audio downloaded',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.white,
+                  ),
+                  softWrap: true,
+                ),
+              ),
+            ],
+          ),
+          duration: Duration(seconds: 2),
+          backgroundColor: Colors.green.withValues(alpha: 0.85),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppConstants.snackBarRadius),
+          ),
+          elevation: 4,
+          width: MediaQuery.of(context).size.width * AppConstants.snackBarWidthFactor,
+        ),
+      );
+    } catch (e) {
+      _log.severe('Download error: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Failed to download audio: $e',
+            style: TextStyle(fontSize: 12, color: Colors.white),
+          ),
+          duration: Duration(seconds: 2),
+          backgroundColor: Colors.red.withValues(alpha: 0.85),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
   Future<void> _updateMessageFeedback(ChatMessage message, bool? isLiked) async {
     // Only update feedback if we have both thread ID and message ID
     if (_currentThreadId == null || message.messageId == null) {
@@ -1852,6 +1975,81 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
     }
   }
 
+  /// Insert inline citation markers into text based on content_index
+  /// Citations are grouped by content_index and appended as superscript numbers
+  /// at the end of each paragraph/section
+  String _insertCitationMarkers(String text, List<Map<String, dynamic>> citations) {
+    if (citations.isEmpty) return text;
+
+    // Group citations by content_index
+    final Map<int, List<String>> citationsByIndex = {};
+    for (final citation in citations) {
+      final contentIndex = citation['content_index'] as int? ?? 0;
+      final citationId = citation['id']?.toString() ?? '';
+      if (citationId.isNotEmpty) {
+        citationsByIndex.putIfAbsent(contentIndex, () => []);
+        citationsByIndex[contentIndex]!.add(citationId);
+      }
+    }
+
+    if (citationsByIndex.isEmpty) return text;
+
+    // Split text into paragraphs (double newline or single newline followed by bullet/number)
+    final paragraphPattern = RegExp(r'\n\n|\n(?=[-•*]|\d+\.)');
+    final paragraphs = text.split(paragraphPattern);
+
+    // If we have more content indices than paragraphs, try splitting by sentences for index 0
+    // Otherwise, distribute citations across paragraphs
+    if (paragraphs.length == 1 && citationsByIndex.length > 1) {
+      // Single block of text - append all citations at the end
+      final allCitations = citations.map((c) => c['id']?.toString() ?? '').where((id) => id.isNotEmpty).toList();
+      final markers = allCitations.map((id) => '[$id]').join('');
+      return '$text $markers';
+    }
+
+    // Map content indices to paragraphs
+    // content_index 0 = first paragraph, 1 = second, etc.
+    final result = StringBuffer();
+    for (int i = 0; i < paragraphs.length; i++) {
+      final paragraph = paragraphs[i];
+
+      // Check if this paragraph index has citations
+      if (citationsByIndex.containsKey(i)) {
+        final markers = citationsByIndex[i]!.map((id) => '[$id]').join('');
+        result.write(paragraph);
+        // Add markers before the paragraph ends (before any trailing whitespace)
+        final trimmed = paragraph.trimRight();
+        if (trimmed != paragraph) {
+          result.write(' $markers${paragraph.substring(trimmed.length)}');
+        } else {
+          result.write(' $markers');
+        }
+      } else {
+        result.write(paragraph);
+      }
+
+      // Re-add paragraph separator (except for last)
+      if (i < paragraphs.length - 1) {
+        result.write('\n\n');
+      }
+    }
+
+    // If there are citations for indices beyond our paragraph count, append them at the end
+    final maxParagraphIndex = paragraphs.length - 1;
+    final remainingCitations = <String>[];
+    for (final entry in citationsByIndex.entries) {
+      if (entry.key > maxParagraphIndex) {
+        remainingCitations.addAll(entry.value);
+      }
+    }
+    if (remainingCitations.isNotEmpty) {
+      final markers = remainingCitations.map((id) => '[$id]').join('');
+      result.write(' $markers');
+    }
+
+    return result.toString();
+  }
+
   Widget _buildTypingIndicator(BuildContext context) {
     final appColors = context.appColors;
 
@@ -1922,6 +2120,9 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
 
   Future<void> _playAudioWeb(List<int> audioBytes, String messageId) async {
     _log.fine('Audio playback started - ${audioBytes.length} bytes');
+
+    // Cache the audio bytes for potential download
+    _ttsAudioCache[messageId] = audioBytes;
 
     // Convert bytes to base64
     final base64Audio = base64Encode(audioBytes);
@@ -2019,6 +2220,7 @@ class ChatMessage {
   bool? isLiked; // null = no rating, true = liked, false = disliked
   bool isStreaming; // Track if this message is currently being streamed
   List<Map<String, String>> footnotes; // List of footnotes with id and content (mutable for streaming)
+  List<Map<String, dynamic>> citations; // List of citations with title, url, content_index (mutable for streaming)
   String? threadId; // Thread ID from backend
   String? messageId; // Message ID from backend database
   String? agentEndpoint; // Agent/model endpoint used for this message
@@ -2035,7 +2237,9 @@ class ChatMessage {
     this.isLiked,
     this.isStreaming = false,
     List<Map<String, String>>? footnotes,
-  }) : footnotes = footnotes ?? [];
+    List<Map<String, dynamic>>? citations,
+  }) : footnotes = footnotes ?? [],
+       citations = citations ?? [];
 }
 
 // Helper class for parsing footnotes from response
@@ -2055,6 +2259,42 @@ external JSPromise<JSAny?> _writeTextToClipboard(String text);
 
 Future<void> _writeToClipboard(String text) async {
   await _writeTextToClipboard(text).toDart;
+}
+
+// JS interop for file download using Blob (more reliable for binary data)
+@JS('eval')
+external JSFunction _jsEval(String code);
+
+void _triggerDownload(String dataUrl, String filename) {
+  // Use Blob URL approach for more reliable binary file downloads
+  // This converts base64 back to binary and creates a proper Blob
+  final script = '''
+    (function(dataUrl, filename) {
+      // Convert data URL to Blob
+      var byteString = atob(dataUrl.split(',')[1]);
+      var mimeType = dataUrl.split(',')[0].split(':')[1].split(';')[0];
+      var ab = new ArrayBuffer(byteString.length);
+      var ia = new Uint8Array(ab);
+      for (var i = 0; i < byteString.length; i++) {
+        ia[i] = byteString.charCodeAt(i);
+      }
+      var blob = new Blob([ab], {type: mimeType});
+
+      // Create blob URL and trigger download
+      var url = URL.createObjectURL(blob);
+      var link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      // Clean up blob URL after short delay
+      setTimeout(function() { URL.revokeObjectURL(url); }, 100);
+    })
+  ''';
+  final fn = _jsEval(script);
+  fn.callAsFunction(null, dataUrl.toJS, filename.toJS);
 }
 
 // JS interop for audio playback

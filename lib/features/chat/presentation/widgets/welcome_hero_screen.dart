@@ -25,10 +25,13 @@ class WelcomeHeroScreen extends ConsumerWidget {
           // Hero logo/name animation
           Hero(
             tag: 'app_logo',
-            child: Image.asset(
-              isDark ? AppColors.darkLogo : AppColors.lightLogo,
-              height: 120,
-              fit: BoxFit.contain,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: Image.asset(
+                isDark ? AppColors.darkLogo : AppColors.lightLogo,
+                height: 120,
+                fit: BoxFit.contain,
+              ),
             )
                 .animate()
                 .fadeIn(duration: 800.ms, curve: Curves.easeOut)

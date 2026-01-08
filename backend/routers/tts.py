@@ -35,19 +35,39 @@ databricks_client = OpenAI(
 ) if DATABRICKS_TOKEN else None
 
 
+def _strip_think_tags(text: str) -> str:
+    """
+    Remove <think>...</think> reasoning blocks from text before TTS processing.
+    This ensures reasoning content is never spoken aloud.
+    """
+    import re
+    # Pattern to match <think>...</think> blocks (including multiline)
+    think_pattern = re.compile(r'<think>.*?</think>\s*', re.DOTALL | re.IGNORECASE)
+    cleaned = think_pattern.sub('', text)
+    return cleaned.strip()
+
+
 @lru_cache(maxsize=100)
 def clean_text_for_tts(text: str) -> str:
     """
     Use LLM to clean text for TTS by removing footnotes, HTML tags, and formatting.
     Results are cached with LRU (Least Recently Used) strategy for efficiency.
     """
+    # First strip any <think> reasoning blocks - these should never be spoken
+    text = _strip_think_tags(text)
+
+    if not text:
+        logger.warning("No text remaining after stripping think tags")
+        return ""
+
     if not databricks_client:
         logger.warning("Databricks client not configured, returning original text")
         return text
 
     try:
         prompt = """Act like a human who is editing this text to be optimized for listening by other humans.
-Clean up and remove all footnotes, references, HTML tags, and markdown formatting.
+Clean up and remove all footnotes, references, HTML tags, markdown formatting, and any reasoning/thinking process text.
+Focus only on the actual informational content that should be spoken aloud.
 Don't change the core subject or meaning, just make it natural for text-to-speech.
 Return only the cleaned text without any explanation.
 

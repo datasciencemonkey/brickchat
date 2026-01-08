@@ -6,8 +6,8 @@
 .pub-cache/
 .pub/
 **/doc/api/
-build/*
-deployment/build/*
+# build/*
+# deployment/build/*
 **/ios/Flutter/.last_build_id
 
 # Android

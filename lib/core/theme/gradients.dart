@@ -57,14 +57,14 @@ abstract class AppGradients {
     stops: [0.0, 0.5, 1.0],
   );
 
-  // Stadium Lights Theme Gradients
+  // BJ's Club - Electric Warehouse Theme Gradients
   static const darkPrimaryGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
     colors: [
-      Color(0xFF9EFF00), // Bright lime
-      Color(0xFFBEFF00), // Electric lime
-      Color(0xFF7FD700), // Deep lime
+      Color(0xFF00E5FF), // Bright cyan
+      Color(0xFF00D4FF), // Electric cyan
+      Color(0xFF00B8E6), // Deep cyan
     ],
     stops: [0.0, 0.5, 1.0],
   );
@@ -73,9 +73,9 @@ abstract class AppGradients {
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
     colors: [
-      Color(0xFF0EA5E9), // Sky blue
-      Color(0xFF0284C7), // Deep sky
-      Color(0xFF0369A1), // Darker blue
+      Color(0xFFFF33FF), // Bright magenta
+      Color(0xFFFF00FF), // Hot magenta
+      Color(0xFFCC00CC), // Deep magenta
     ],
     stops: [0.0, 0.5, 1.0],
   );
@@ -84,9 +84,9 @@ abstract class AppGradients {
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
     colors: [
-      Color(0xFFFFE700), // Bright gold
-      Color(0xFFFFD700), // Stadium gold
-      Color(0xFFFFB700), // Deep gold
+      Color(0xFFFFFF00), // Bright yellow
+      Color(0xFFFFE500), // Electric yellow
+      Color(0xFFFFCC00), // Deep gold
     ],
     stops: [0.0, 0.5, 1.0],
   );
@@ -95,9 +95,9 @@ abstract class AppGradients {
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
     colors: [
-      Color(0xFF0A0E1A), // Deep charcoal
-      Color(0xFF0F1420), // Midnight
-      Color(0xFF1A2332), // Midnight blue
+      Color(0xFF0A0A14), // Deep midnight
+      Color(0xFF0E0E1E), // Purple-black
+      Color(0xFF12122A), // Rich purple-black
     ],
     stops: [0.0, 0.5, 1.0],
   );
@@ -106,9 +106,9 @@ abstract class AppGradients {
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
     colors: [
-      Color(0xFF1A2332), // Midnight blue
-      Color(0xFF1E2A3D), // Deeper blue
-      Color(0xFF233248), // Rich blue
+      Color(0xFF12121F), // Dark purple-black
+      Color(0xFF1A1A2E), // Deeper purple
+      Color(0xFF22223A), // Rich purple
     ],
     stops: [0.0, 0.5, 1.0],
   );
@@ -117,9 +117,9 @@ abstract class AppGradients {
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,
     colors: [
-      Color(0xFF050810), // Deep black
-      Color(0xFF0A0E1A), // Charcoal
-      Color(0xFF050810), // Deep black
+      Color(0xFF06060E), // Deepest black
+      Color(0xFF0A0A14), // Midnight
+      Color(0xFF06060E), // Deepest black
     ],
     stops: [0.0, 0.5, 1.0],
   );
@@ -128,8 +128,8 @@ abstract class AppGradients {
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
     colors: [
-      Color(0xFF1A3A1A), // Dark green
-      Color(0xFF2A5A1A), // Forest green
+      Color(0xFF002030), // Deep cyan-black
+      Color(0xFF003344), // Rich cyan-blue
     ],
     stops: [0.0, 1.0],
   );
@@ -138,8 +138,8 @@ abstract class AppGradients {
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
     colors: [
-      Color(0xFF2D3748), // Neutral gray
-      Color(0xFF374151), // Lighter gray
+      Color(0xFF1E1E32), // Dark purple-gray
+      Color(0xFF2A2A45), // Lighter purple-gray
     ],
     stops: [0.0, 1.0],
   );
@@ -156,13 +156,13 @@ abstract class AppGradients {
     stops: [0.0, 0.5, 1.0],
   );
 
-  // Button gradients
+  // Button gradients - BJ's Club Electric
   static const primaryButtonGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
     colors: [
-      Color(0xFF9EFF00), // Bright lime
-      Color(0xFFBEFF00), // Electric lime
+      Color(0xFF00E5FF), // Bright cyan
+      Color(0xFF00D4FF), // Electric cyan
     ],
   );
 
@@ -170,8 +170,8 @@ abstract class AppGradients {
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
     colors: [
-      Color(0xFF0EA5E9), // Sky blue
-      Color(0xFF0284C7), // Deep sky
+      Color(0xFFFF33FF), // Bright magenta
+      Color(0xFFFF00FF), // Hot magenta
     ],
   );
 

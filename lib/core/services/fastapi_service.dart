@@ -53,6 +53,7 @@ class FastApiService {
         if (data['status'] == 'success') {
           return {
             'response': data['response'] ?? '',
+            'citations': data['citations'] ?? [],
             'thread_id': data['thread_id'],
             'user_message_id': data['user_message_id'],
             'assistant_message_id': data['assistant_message_id'],
@@ -127,7 +128,12 @@ class FastApiService {
                   yield {'metadata': data['metadata']};
                 } else if (data['content'] != null) {
                   yield {'content': data['content']};
+                } else if (data['reasoning'] != null) {
+                  yield {'reasoning': data['reasoning']};
+                } else if (data['citations'] != null) {
+                  yield {'citations': data['citations']};
                 } else if (data['footnotes'] != null) {
+                  // Legacy support for footnotes
                   yield {'footnotes': data['footnotes']};
                 } else if (data['assistant_message_id'] != null) {
                   yield {'assistant_message_id': data['assistant_message_id']};

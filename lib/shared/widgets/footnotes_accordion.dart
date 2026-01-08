@@ -1,28 +1,35 @@
 import 'package:flutter/material.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/constants/app_constants.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:url_launcher/url_launcher.dart';
 
-class FootnotesAccordion extends StatefulWidget {
-  final List<Map<String, String>> footnotes;
-  final MarkdownStyleSheet? styleSheet;
+/// Widget to display source citations from the model response.
+/// Citations contain title and URL linking to the source document.
+class SourcesAccordion extends StatefulWidget {
+  final List<Map<String, dynamic>> citations;
 
-  const FootnotesAccordion({
+  const SourcesAccordion({
     super.key,
-    required this.footnotes,
-    this.styleSheet,
+    required this.citations,
   });
 
   @override
-  State<FootnotesAccordion> createState() => _FootnotesAccordionState();
+  State<SourcesAccordion> createState() => _SourcesAccordionState();
 }
 
-class _FootnotesAccordionState extends State<FootnotesAccordion> {
+class _SourcesAccordionState extends State<SourcesAccordion> {
   bool _isExpanded = false;
+
+  Future<void> _launchUrl(String url) async {
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    if (widget.footnotes.isEmpty) {
+    if (widget.citations.isEmpty) {
       return const SizedBox.shrink();
     }
 
@@ -63,8 +70,14 @@ class _FootnotesAccordionState extends State<FootnotesAccordion> {
                     color: appColors.mutedForeground,
                   ),
                   const SizedBox(width: 6),
+                  Icon(
+                    Icons.link,
+                    size: 14,
+                    color: appColors.mutedForeground,
+                  ),
+                  const SizedBox(width: 4),
                   Text(
-                    'Footnotes (${widget.footnotes.length})',
+                    'Sources (${widget.citations.length})',
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
@@ -85,20 +98,23 @@ class _FootnotesAccordionState extends State<FootnotesAccordion> {
               padding: const EdgeInsets.all(12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: widget.footnotes.asMap().entries.map((entry) {
+                children: widget.citations.asMap().entries.map((entry) {
                   final index = entry.key;
-                  final footnote = entry.value;
-                  final number = footnote['number'] ?? '${index + 1}';
+                  final citation = entry.value;
+                  final number = citation['id'] ?? '${index + 1}';
+                  final title = citation['title'] ?? 'Source';
+                  final url = citation['url'] ?? '';
+
                   return Padding(
                     padding: EdgeInsets.only(
-                      bottom: index < widget.footnotes.length - 1 ? 12 : 0,
+                      bottom: index < widget.citations.length - 1 ? 12 : 0,
                     ),
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Footnote number badge with anchor ID
+                        // Citation number badge
                         Container(
-                          key: ValueKey('footnote-$number'),
+                          key: ValueKey('citation-$number'),
                           margin: const EdgeInsets.only(top: 2),
                           padding: const EdgeInsets.symmetric(
                             horizontal: 6,
@@ -122,35 +138,41 @@ class _FootnotesAccordionState extends State<FootnotesAccordion> {
                           ),
                         ),
                         const SizedBox(width: 8),
-                        // Footnote content with markdown support
+                        // Citation content with clickable link
                         Expanded(
-                          child: MarkdownBody(
-                            data: footnote['content'] ?? '',
-                            selectable: true,
-                            styleSheet: widget.styleSheet ??
-                                MarkdownStyleSheet(
-                                  p: TextStyle(
-                                    color: appColors.messageText,
-                                    fontSize: 12,
-                                    height: 1.4,
-                                  ),
-                                  a: TextStyle(
-                                    color: appColors.accent,
-                                    fontSize: 12,
-                                    decoration: TextDecoration.underline,
-                                  ),
-                                  code: TextStyle(
-                                    backgroundColor: appColors.muted.withValues(alpha: 0.3),
-                                    color: appColors.messageText,
-                                    fontFamily: 'monospace',
-                                    fontSize: 11,
-                                  ),
-                                  strong: TextStyle(
-                                    color: appColors.messageText,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 12,
+                          child: InkWell(
+                            onTap: url.isNotEmpty ? () => _launchUrl(url) : null,
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.description_outlined,
+                                  size: 14,
+                                  color: appColors.accent,
+                                ),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    title,
+                                    style: TextStyle(
+                                      color: url.isNotEmpty ? appColors.accent : appColors.messageText,
+                                      fontSize: 12,
+                                      height: 1.4,
+                                      decoration: url.isNotEmpty ? TextDecoration.underline : null,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                    maxLines: 2,
                                   ),
                                 ),
+                                if (url.isNotEmpty) ...[
+                                  const SizedBox(width: 4),
+                                  Icon(
+                                    Icons.open_in_new,
+                                    size: 12,
+                                    color: appColors.accent,
+                                  ),
+                                ],
+                              ],
+                            ),
                           ),
                         ),
                       ],
