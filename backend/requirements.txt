@@ -8,6 +8,7 @@ anyio>=3.7.1,<5.0.0
 attrs==25.3.0
 certifi==2025.8.3
 click==8.3.0
+databricks-sdk>=0.20.0
 dataclasses-json==0.6.7
 deepgram-sdk==4.8.1
 deprecation==2.1.0

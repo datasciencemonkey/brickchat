@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from deepgram import DeepgramClient, SpeakOptions
 import replicate
@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 from functools import lru_cache
 from openai import OpenAI
 import logging
+from auth import get_current_user, UserContext
 
 load_dotenv()
 
@@ -97,12 +98,17 @@ Text to clean:
 
 
 @router.post("/speak")
-async def text_to_speech(request: dict):
-    """Convert text to speech using selected provider or fallback logic"""
+async def text_to_speech(request: dict, user: UserContext = Depends(get_current_user)):
+    """Convert text to speech using selected provider or fallback logic.
+    User context is captured for future volume storage integration.
+    """
     try:
         raw_text = request.get("text", "").strip()
         if not raw_text:
             raise HTTPException(status_code=400, detail="Text is required")
+
+        # Log user context for debugging (will be used for volume storage later)
+        logger.info(f"TTS request from user: {user.user_id}")
 
         # Clean text using LLM for better TTS output
         print(f"===== TTS RAW TEXT (RECEIVED FROM CLIENT) =====")

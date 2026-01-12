@@ -297,6 +297,7 @@ The app uses ProviderScope at the root level with:
 - Maintain responsive design principles for all new features
 - Use `uv` for all Python package management (as per user preferences)
 - Test full stack via `http://localhost:8000`, not direct file access
+- **Backend Development**: Always work in the `backend/` folder for backend dev efforts. Once work is done, port changes over to the `deployment/` folder
 
 ### Security Considerations
 - Microphone permissions require HTTPS or localhost

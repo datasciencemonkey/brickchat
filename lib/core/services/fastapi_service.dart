@@ -191,19 +191,20 @@ class FastApiService {
   }
 
   /// Update feedback (like/dislike) for a message
+  /// User identity now comes from auth context on the backend
   static Future<Map<String, dynamic>> updateFeedback({
     required String messageId,
     required String threadId,
     required String feedbackType, // 'like', 'dislike', or 'none'
-    String userId = "dev_user",
+    String? userId, // Deprecated: user_id now comes from auth headers
   }) async {
     try {
       final url = Uri.parse('$baseUrl/api/feedback/feedback');
 
+      // user_id is no longer needed - comes from auth context
       Map<String, dynamic> requestBody = {
         'message_id': messageId,
         'thread_id': threadId,
-        'user_id': userId,
         'feedback_type': feedbackType,
       };
 
@@ -227,10 +228,11 @@ class FastApiService {
     }
   }
 
-  /// Fetch all threads for a user
-  static Future<List<Map<String, dynamic>>> getUserThreads(String userId) async {
+  /// Fetch all threads for the current user (user identity comes from auth context on backend)
+  static Future<List<Map<String, dynamic>>> getUserThreads([String? userId]) async {
     try {
-      final url = Uri.parse('$baseUrl/api/chat/threads/$userId');
+      // User identity now comes from auth headers on the backend
+      final url = Uri.parse('$baseUrl/api/chat/threads');
 
       final response = await http.get(
         url,

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from openai import OpenAI
 import os
@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 import json
 import re
 from database import initialize_database
+from auth import get_current_user, UserContext
 import logging
 
 load_dotenv()
@@ -112,14 +113,14 @@ async def get_config():
     }
 
 
-@router.get("/threads/{user_id}")
-async def get_user_threads(user_id: str):
-    """Get all chat threads for a user with their last message"""
+@router.get("/threads")
+async def get_user_threads(user: UserContext = Depends(get_current_user)):
+    """Get all chat threads for the authenticated user with their last message"""
     try:
-        threads = chat_db.get_user_threads_with_last_message(user_id)
-        return {"threads": threads}
+        threads = chat_db.get_user_threads_with_last_message(user.user_id)
+        return {"threads": threads, "user_id": user.user_id}
     except Exception as e:
-        logger.error(f"Error fetching threads: {str(e)}")
+        logger.error(f"Error fetching threads for {user.user_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch threads: {str(e)}")
 
 
@@ -135,7 +136,7 @@ async def get_thread_messages(thread_id: str):
 
 
 @router.post("/send")
-async def send_message(message: dict):
+async def send_message(message: dict, user: UserContext = Depends(get_current_user)):
     """Send a chat message to Databricks endpoint with conversation history and track in database"""
     try:
         # Extract the message text from the request
@@ -149,9 +150,9 @@ async def send_message(message: dict):
         # Extract stream parameter (defaults to True for backward compatibility)
         use_streaming = message.get("stream", True)
 
-        # Extract or create thread ID
+        # Extract or create thread ID - user_id comes from auth context
         thread_id = message.get("thread_id")
-        user_id = message.get("user_id", "dev_user")
+        user_id = user.user_id
 
         # Create new thread if not provided
         if not thread_id:

@@ -1155,9 +1155,50 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
                             fontSize: 10,
                           ),
                         ),
-                        // Streaming indicator
+                        // Streaming indicator with animated status text
                         if (message.isStreaming && !message.isOwn) ...[
                           const SizedBox(width: 8),
+                          Flexible(
+                            child: AnimatedTextKit(
+                              animatedTexts: [
+                                TyperAnimatedText(
+                                  'Working...',
+                                  textStyle: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                    color: appColors.accent,
+                                    fontSize: 10,
+                                  ),
+                                  speed: const Duration(milliseconds: 80),
+                                ),
+                                TyperAnimatedText(
+                                  'Contacting agent...',
+                                  textStyle: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                    color: appColors.accent,
+                                    fontSize: 10,
+                                  ),
+                                  speed: const Duration(milliseconds: 60),
+                                ),
+                                TyperAnimatedText(
+                                  'Gathering responses...',
+                                  textStyle: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                    color: appColors.accent,
+                                    fontSize: 10,
+                                  ),
+                                  speed: const Duration(milliseconds: 50),
+                                ),
+                                TyperAnimatedText(
+                                  'Resolving...',
+                                  textStyle: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                    color: appColors.accent,
+                                    fontSize: 10,
+                                  ),
+                                  speed: const Duration(milliseconds: 70),
+                                ),
+                              ],
+                              repeatForever: true,
+                              pause: const Duration(milliseconds: 500),
+                            ),
+                          ),
+                          const SizedBox(width: 4),
                           LoadingAnimationWidget.staggeredDotsWave(
                             color: appColors.accent,
                             size: 16,

@@ -1,12 +1,12 @@
 """Feedback API endpoints for managing likes/dislikes"""
-from fastapi import APIRouter, HTTPException, Body
+from fastapi import APIRouter, HTTPException, Body, Depends
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any, List
 from datetime import datetime
-import uuid
 import logging
 
 from database import initialize_database
+from auth import get_current_user, UserContext
 
 logger = logging.getLogger(__name__)
 
@@ -16,20 +16,20 @@ router = APIRouter(prefix="/api/feedback", tags=["feedback"])
 chat_db = initialize_database()
 
 class ThreadCreate(BaseModel):
-    user_id: str = Field(default="dev_user", description="User ID for the thread")
+    """Thread creation - user_id comes from auth context"""
     metadata: Optional[Dict[str, Any]] = Field(default={}, description="Optional metadata")
 
 class MessageCreate(BaseModel):
+    """Message creation - user_id comes from auth context"""
     thread_id: str = Field(..., description="Thread ID")
-    user_id: str = Field(default="dev_user", description="User ID")
     message_role: str = Field(..., description="Role: user, assistant, or system")
     message_content: str = Field(..., description="Message content")
     metadata: Optional[Dict[str, Any]] = Field(default={}, description="Optional metadata")
 
 class FeedbackUpdate(BaseModel):
+    """Feedback update - user_id comes from auth context"""
     message_id: str = Field(..., description="Message ID to provide feedback for")
     thread_id: str = Field(..., description="Thread ID")
-    user_id: str = Field(default="dev_user", description="User ID")
     feedback_type: str = Field(..., description="Feedback type: like, dislike, or none")
 
 class ThreadResponse(BaseModel):
@@ -48,11 +48,14 @@ class FeedbackResponse(BaseModel):
     deleted: Optional[bool] = False
 
 @router.post("/thread", response_model=ThreadResponse)
-async def create_thread(thread_data: ThreadCreate = Body(...)):
-    """Create a new chat thread"""
+async def create_thread(
+    thread_data: ThreadCreate = Body(...),
+    user: UserContext = Depends(get_current_user)
+):
+    """Create a new chat thread for the authenticated user"""
     try:
         thread_id = chat_db.create_thread(
-            user_id=thread_data.user_id,
+            user_id=user.user_id,
             metadata=thread_data.metadata
         )
         return ThreadResponse(
@@ -60,12 +63,15 @@ async def create_thread(thread_data: ThreadCreate = Body(...)):
             created_at=datetime.now().isoformat()
         )
     except Exception as e:
-        logger.error(f"Failed to create thread: {e}")
+        logger.error(f"Failed to create thread for {user.user_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/message", response_model=MessageResponse)
-async def save_message(message_data: MessageCreate = Body(...)):
-    """Save a chat message"""
+async def save_message(
+    message_data: MessageCreate = Body(...),
+    user: UserContext = Depends(get_current_user)
+):
+    """Save a chat message for the authenticated user"""
     try:
         # Validate message role
         if message_data.message_role not in ['user', 'assistant', 'system']:
@@ -73,7 +79,7 @@ async def save_message(message_data: MessageCreate = Body(...)):
 
         message_id = chat_db.save_message(
             thread_id=message_data.thread_id,
-            user_id=message_data.user_id,
+            user_id=user.user_id,
             message_role=message_data.message_role,
             message_content=message_data.message_content,
             metadata=message_data.metadata
@@ -85,12 +91,15 @@ async def save_message(message_data: MessageCreate = Body(...)):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to save message: {e}")
+        logger.error(f"Failed to save message for {user.user_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.put("/feedback", response_model=FeedbackResponse)
-async def update_feedback(feedback_data: FeedbackUpdate = Body(...)):
-    """Update or insert feedback for a message"""
+async def update_feedback(
+    feedback_data: FeedbackUpdate = Body(...),
+    user: UserContext = Depends(get_current_user)
+):
+    """Update or insert feedback for a message from the authenticated user"""
     try:
         # Validate feedback type
         if feedback_data.feedback_type not in ['like', 'dislike', 'none']:
@@ -99,7 +108,7 @@ async def update_feedback(feedback_data: FeedbackUpdate = Body(...)):
         result = chat_db.update_feedback(
             message_id=feedback_data.message_id,
             thread_id=feedback_data.thread_id,
-            user_id=feedback_data.user_id,
+            user_id=user.user_id,
             feedback_type=feedback_data.feedback_type
         )
 
