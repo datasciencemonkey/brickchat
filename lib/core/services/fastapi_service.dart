@@ -163,49 +163,7 @@ class FastApiService {
     return response['response'] ?? response['error'] ?? 'Unknown error';
   }
 
-  /// Get text-to-speech audio URL from backend
-  static String getTtsAudioUrl(String text) {
-    // Return the URL that will be used to fetch the audio
-    return '$baseUrl/api/tts/speak';
-  }
-
-  /// Request text-to-speech audio from backend
-  ///
-  /// Parameters:
-  /// - text: The text to convert to speech
-  /// - provider: TTS provider ('replicate' or 'deepgram')
-  /// - voice: Voice ID for the selected provider
-  /// - messageId: Message ID for caching (optional)
-  /// - saveToVolume: Whether to cache audio to Databricks Volume (optional)
-  static Future<http.Response> requestTts(
-    String text, {
-    String? provider,
-    String? voice,
-    String? messageId,
-    bool? saveToVolume,
-  }) async {
-    try {
-      final url = Uri.parse('$baseUrl/api/tts/speak');
-      final requestBody = {
-        'text': text,
-        if (provider != null) 'provider': provider,
-        if (voice != null) 'voice': voice,
-        if (messageId != null) 'message_id': messageId,
-        if (saveToVolume != null) 'save_to_volume': saveToVolume,
-      };
-
-      final response = await http.post(
-        url,
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode(requestBody),
-      );
-      return response;
-    } catch (e) {
-      throw Exception('Error requesting TTS: $e');
-    }
-  }
-
-  /// Stream TTS audio chunks via SSE (for eager mode)
+  /// Stream TTS audio chunks via SSE
   /// Returns a stream of events containing audio chunks or control messages
   ///
   /// Event types:

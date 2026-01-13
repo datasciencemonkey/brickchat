@@ -45,11 +45,27 @@ env:
 
   - name: DATABRICKS_LLM_MODEL
     value: 'databricks-gemma-3-12b'
+  
+  - name: DATABRICKS_VOLUME
+    value: "/Volumes/serverless_9cefok_catalog/sgfs/data/brickchat/"
 
-# Resource configuration (optional)
-# resources:
-#   cpu: 1
-#   memory: 2Gi
+# App resources - secrets the app's service principal can access
+resources:
+  - name: DATABRICKS_TOKEN
+    secret:
+      scope: sgscope
+      key: DATABRICKS_TOKEN
+      permission: READ
+  - name: REPLICATE_API_TOKEN
+    secret:
+      scope: sgscope
+      key: REPLICATE_API_TOKEN
+      permission: READ
+  - name: DEEPGRAM_API_TOKEN
+    secret:
+      scope: sgscope
+      key: DEEPGRAM_API_TOKEN
+      permission: READ
 
 # Health check configuration (optional)
 # healthcheck:

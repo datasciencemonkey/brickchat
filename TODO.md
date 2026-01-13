@@ -30,7 +30,7 @@ BrickChat UI — Feature To-Dos
  Write files to Databricks Volumes under user-specific path (e.g., /Volumes/catalog/schema/tts_audio/{user_id}/)
  Apply Unity Catalog permissions so each user can only access their own files
  Backend endpoint to list user's available TTS files
- Flutter UI to browse and download TTS files on demand
+
 
 ---
 

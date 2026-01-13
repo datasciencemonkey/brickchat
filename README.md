@@ -1,131 +1,197 @@
-# Welcome to BrickChat! 🧱💬
+# BrickChat
 
-**BrickChat** is a sophisticated AI-powered chat application designed specifically for interacting with Databricks AI agents. Built with Flutter and featuring a modern, professional interface, it offers a seamless conversational experience across web and desktop platforms.
+A production-ready AI chat interface for Databricks serving endpoints. Deploy as a Databricks App with SSO authentication, persistent conversations, and enterprise features.
 
-## ✨ Key Features
+## What BrickChat Does
 
-### 🎯 **AI-Powered Conversations**
-- **Databricks Integration**: Direct connection to Databricks serving endpoints for intelligent responses
-- **Context-Aware Chat**: Maintains conversation history with smart context management
-- **Dual Response Modes**: Choose between streaming (word-by-word) or instant complete responses
-- **Multi-turn Conversations**: Full conversation context preserved for coherent interactions
+BrickChat provides a complete chat experience for interacting with AI agents hosted on Databricks:
 
-### 🎤 **Voice Interaction**
-- **Speech-to-Text**: Click the microphone to speak your messages naturally
-- **Real-time Recognition**: Live transcription with visual feedback and animations
-- **Permission Handling**: Seamless microphone access with user-friendly prompts
-- **Keyboard Shortcuts**: Press Escape to cancel voice input
+- **Connects to Databricks AI serving endpoints** using OpenAI-compatible API format
+- **Streams responses in real-time** with Server-Sent Events (SSE)
+- **Persists all conversations** to PostgreSQL with thread management and search
+- **Authenticates users automatically** via Databricks Apps on-behalf-of flow
+- **Supports voice input** with browser-native speech-to-text
+- **Provides text-to-speech** playback via Deepgram or Replicate APIs
 
-### 🔊 **Text-to-Speech (TTS) Features**
-- **Dual Provider Support**: Choose between Replicate (Kokoro-82M) or Deepgram (Aura) for optimal voice quality
-- **18+ Voice Options**: Select from diverse voices including male and female options
-- **AI-Powered Text Cleaning**: LLM intelligently removes footnotes, HTML tags, and formatting for natural speech
-- **Smart Caching**: LRU cache stores 100 cleaned texts to reduce API calls and improve response time
-- **Streaming TTS**: Real-time audio playback as responses are generated (when streaming enabled)
-- **Eager Mode**: Automatically play TTS after AI responses (works with both streaming and non-streaming modes)
-- **Manual TTS Control**: Click the speaker icon on any message to play audio
-- **Provider Fallback**: Automatic fallback between TTS providers if one fails
-- **Voice Persistence**: Your voice and provider preferences are saved across sessions
+## Architecture
 
-### 🎨 **Beautiful, Adaptive Interface**
-- **Dual Themes**: Switch between light ("BrickChat") and dark ("**Customer**Chat") modes with smooth transitions
-- **Professional Design**: Clean, minimalistic interface with Databricks brand colors
-- **Responsive Layout**: Optimized for web browsers and desktop applications
-- **Animated Elements**: Smooth transitions, typing indicators, and visual feedback
+```mermaid
+flowchart TB
+    subgraph "Databricks Apps"
+        subgraph "BrickChat Application"
+            UI[Flutter Web UI<br/>WASM Build]
+            API[FastAPI Backend<br/>Port 8000]
+            DB[(PostgreSQL<br/>Chat History)]
+        end
+    end
 
-### 💬 **Rich Messaging Experience**
-- **Markdown Support**: Format messages with bold, italic, code blocks, links, and footnotes
-- **Message Actions**: Like/dislike, copy to clipboard, and text-to-speech playback
-- **Typing Indicators**: Animated "Assistant is working..." with engaging status messages
-- **Message History**: Scrollable conversation with timestamps and author labels
-- **Collapsible Reasoning**: AI reasoning displayed in expandable sections for transparency
-- **Footnotes Support**: Interactive footnotes with hover tooltips and expandable content
+    UI -->|HTTP/SSE| API
+    API -->|SQL| DB
+    API -->|OpenAI API| DAI[Databricks AI<br/>Serving Endpoint]
+    API -->|TTS API| DG[Deepgram]
+    API -->|TTS API| REP[Replicate]
+```
 
-### 📜 **Chat History & Persistence**
-- **Thread-Based Conversations**: All chats automatically saved to PostgreSQL database with unique thread IDs
-- **Chat History Page**: Access all your previous conversations in one organized view
-- **Search Functionality**: Find past conversations by searching through message content
-- **Continue Conversations**: Resume any previous chat thread with full context preserved
-- **Smart Timestamps**: See when each conversation was last active (e.g., "2 hours ago", "3 days ago")
-- **Message Previews**: View first and last messages for quick identification of conversations
+See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed diagrams and data flows.
 
-### 👍 **Message Feedback System**
-- **Like/Dislike Messages**: Provide feedback on assistant responses with intuitive icons
-- **Persistent Feedback**: All feedback stored in database and synced across sessions
-- **Visual Indicators**: Clear icons showing your current feedback state
-- **Toggle Support**: Easily change or remove feedback at any time
-- **User-Specific**: Feedback is tracked per user for personalized experience
+## Quick Start: Deploy to Databricks
 
-### ⚙️ **Customizable Settings**
-- **Streaming Toggle**: Enable/disable real-time response streaming (experimental)
-- **Eager Mode**: Automatically play text-to-speech (works with or without streaming)
-- **TTS Provider Selection**: Choose between Replicate (Kokoro-82M) or Deepgram (Aura) voices
-- **Voice Customization**: Select from 18+ voices across different providers
-- **Theme Persistence**: Your theme preference is remembered across sessions
-- **Settings Panel**: Easy access to app configuration and information
+### Prerequisites
 
-### 🔧 **Technical Excellence**
-- **Cross-Platform**: Works across iOS, Android, Web browsers, and Desktop (Windows, macOS, Linux)
-- **WASM Compatible**: Modern web technology for optimal performance
-- **Clean Architecture**: Built with Flutter and Riverpod for maintainable code
-- **PostgreSQL Backend**: Enterprise-grade database for reliable, persistent storage
-- **Thread-Based Management**: Intelligent conversation organization with unique thread IDs
-- **Message Persistence**: All messages and feedback automatically saved with metadata
-- **Connection Pooling**: Efficient database connections (1-20 pool) for optimal performance
-- **LLM-Enhanced TTS**: Backend uses Databricks LLM to intelligently clean text for optimal speech output
-- **Efficient Caching**: LRU cache reduces API calls while maintaining fresh, context-aware text processing
-- **Error Handling**: Graceful error management with user-friendly messages
+- Databricks workspace with Apps enabled
+- [Databricks CLI](https://docs.databricks.com/dev-tools/cli/index.html) installed and configured
+- PostgreSQL database accessible from Databricks
+- Flutter SDK 3.8.1+ installed
 
-## 🎯 **Perfect For**
-- **Data Scientists** working with Databricks platforms
-- **AI Researchers** needing intelligent conversation tools
-- **Business Users** requiring professional chat interfaces
-- **Developers** building AI-powered applications
+### Step 1: Configure Secrets
 
-## ⚙️ **Response Modes & TTS Settings**
+Create a secret scope and add required secrets:
 
-### **Streaming and Eager Mode**
-BrickChat offers flexible response modes that can work independently or together:
+```bash
+# Create secret scope
+databricks secrets create-scope brickchat-secrets
 
-- **Streaming Mode** (Experimental): Responses appear word-by-word as they are generated, providing real-time feedback
-- **Eager Mode**: Automatically plays text-to-speech:
-  - When streaming is enabled: TTS plays after the streaming response completes
-  - When streaming is disabled: TTS plays after the full response is received
+# Add secrets (you'll be prompted for values)
+databricks secrets put-secret brickchat-secrets databricks-token
+databricks secrets put-secret brickchat-secrets pghost
+databricks secrets put-secret brickchat-secrets pg-pass
+databricks secrets put-secret brickchat-secrets deepgram-api-key      # Optional: for TTS
+databricks secrets put-secret brickchat-secrets replicate-api-token   # Optional: for TTS
+```
 
-Both modes can now be enabled simultaneously for the ultimate interactive experience!
+### Step 2: Update Configuration
 
-### **TTS Configuration**
-Access the settings panel to customize your text-to-speech experience:
+Edit `deployment/app.yaml` to match your environment:
 
-1. **Provider Selection**: Choose between Replicate (Kokoro-82M) or Deepgram (Aura)
-2. **Voice Selection**: Pick from 18+ voices including male and female options
-3. **Eager Mode**: Enable automatic TTS playback after responses complete
-4. **Manual Control**: Click the speaker icon on any message for on-demand audio
+```yaml
+env:
+  - name: DATABRICKS_MODEL
+    value: "your-serving-endpoint-name"  # Update this
+  - name: DATABRICKS_BASE_URL
+    value: "https://your-workspace.cloud.databricks.com/serving-endpoints"  # Update this
+```
 
-### **AI-Powered TTS Processing**
-BrickChat uses advanced LLM technology to ensure optimal text-to-speech output:
+### Step 3: Build and Deploy
 
-- **Intelligent Text Cleaning**: Backend LLM automatically removes footnotes, HTML tags, and formatting artifacts
-- **Context-Aware Processing**: The AI understands context and preserves meaning while optimizing for natural speech
-- **Efficient Caching**: LRU cache with 100-item capacity reduces API calls for frequently spoken content
-- **Seamless Integration**: All processing happens server-side - no client-side complexity
+```bash
+# Build Flutter WASM
+flutter build web --wasm
 
-## 🚀 **Getting Started**
+# Update deployment folder
+./deployment/update_deployment.sh
 
-### First Time Use
-Simply type your message or click the microphone to start speaking. The AI assistant will respond intelligently based on your conversation context, making it feel like chatting with a knowledgeable colleague.
+# Deploy to Databricks Apps
+databricks apps deploy brickchat --source-code-path ./deployment
+```
 
-### Accessing Chat History
-1. Click the **history icon** in the top navigation
-2. Browse all your previous conversations with timestamps
-3. Use the **search box** to find specific topics or messages
-4. Click any conversation to continue where you left off
-5. Start a **new conversation** anytime with the + button
+### Step 4: Access Your App
 
-### Providing Feedback
-- Click the 👍 icon to like helpful responses
-- Click the 👎 icon to flag responses that need improvement
-- Your feedback helps improve the AI assistant over time
-- Toggle feedback on/off by clicking the icons again
+After deployment completes, access BrickChat at:
+```
+https://your-workspace.cloud.databricks.com/apps/brickchat
+```
 
-**Built with ❤️ using Flutter, Databricks, and modern web technologies.**
+## Quick Start: Local Development
+
+### Backend
+
+```bash
+cd backend
+
+# Create .env file from example
+cp .env.example .env
+# Edit .env with your credentials
+
+# Install dependencies and run
+uv pip install -r requirements.txt
+uv run python app.py
+```
+
+Backend runs at `http://localhost:8000`
+
+### Frontend (for UI development)
+
+```bash
+# Run Flutter in Chrome
+flutter run -d chrome
+```
+
+For full-stack development, the backend serves the Flutter build at `http://localhost:8000`.
+
+## Configuration
+
+### Environment Variables
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `DATABRICKS_TOKEN` | Personal access token for Databricks API | Yes |
+| `DATABRICKS_BASE_URL` | Serving endpoint base URL | Yes |
+| `DATABRICKS_MODEL` | Model/endpoint name | Yes |
+| `PGHOST` | PostgreSQL hostname | Yes |
+| `PGDATABASE` | Database name (default: `brickchat`) | Yes |
+| `PGUSER` | Database username | Yes |
+| `PG_PASS` | Database password | Yes |
+| `PGPORT` | Database port (default: `5432`) | No |
+| `DEEPGRAM_API_KEY` | Deepgram API key for TTS | No |
+| `REPLICATE_API_TOKEN` | Replicate API token for TTS | No |
+
+### Database Setup
+
+Apply the schema to your PostgreSQL database:
+
+```bash
+psql -h $PGHOST -U $PGUSER -d $PGDATABASE -f deployment/schema.sql
+```
+
+See [deployment/postgres_setup.md](deployment/postgres_setup.md) for detailed setup instructions.
+
+## Features
+
+### Chat
+- Real-time streaming responses with typing indicators
+- Conversation threading with history and search
+- Message feedback (like/dislike) with persistence
+- Markdown rendering with code syntax highlighting
+- Collapsible reasoning sections for AI transparency
+
+### Voice & Audio
+- Speech-to-text via browser Web Speech API
+- Text-to-speech with 18+ voice options (Deepgram Aura, Replicate Kokoro)
+- Eager mode for automatic TTS playback
+
+### Interface
+- Light and dark themes with system preference detection
+- Responsive design for web and desktop
+- Professional Databricks-inspired branding
+
+### Enterprise
+- SSO authentication via Databricks Apps headers
+- On-behalf-of API calls with user context
+- PostgreSQL-backed persistence with connection pooling
+
+## Project Structure
+
+```
+brickchat/
+├── lib/                    # Flutter frontend (Dart)
+│   ├── core/              # Services, theme, constants
+│   ├── features/          # Chat, settings pages
+│   └── shared/            # Reusable widgets
+├── backend/               # FastAPI backend (Python) - for development
+│   ├── routers/           # API endpoints (chat, tts, feedback)
+│   ├── app.py             # Main application
+│   └── database.py        # PostgreSQL connection
+├── deployment/            # Production deployment files
+│   ├── app.yaml           # Databricks Apps config
+│   ├── build/             # Flutter WASM build output
+│   └── routers/           # API endpoints (production paths)
+└── ARCHITECTURE.md        # Detailed architecture documentation
+```
+
+## Troubleshooting
+
+See [deployment/TROUBLESHOOTING.md](deployment/TROUBLESHOOTING.md) for common issues and solutions.
+
+## Support
+
+For issues or feature requests, contact your Databricks administrator or open an issue in the repository.

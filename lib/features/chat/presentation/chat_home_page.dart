@@ -528,10 +528,10 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
             // Auto-trigger TTS if eager mode is enabled
             final eagerMode = ref.read(eagerModeProvider);
             if (eagerMode) {
-              // Wait a brief moment for UI to settle, then play TTS
+              // Wait a brief moment for UI to settle, then play streaming TTS
               Future.delayed(const Duration(milliseconds: 300), () {
                 if (mounted) {
-                  _playTextToSpeech(assistantMessage);
+                  _playStreamingTts(assistantMessage);
                 }
               });
             }
@@ -1402,7 +1402,7 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
                                 onTap: message.isStreaming ? null : () {
                                   // Prevent multiple taps while loading or streaming
                                   if (!_isAudioLoading && !message.isStreaming) {
-                                    _playTextToSpeech(message);
+                                    _playStreamingTts(message);
                                   }
                                 },
                                 child: Container(
@@ -1633,7 +1633,9 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
     );
   }
 
-  void _playTextToSpeech(ChatMessage message) async {
+  /// Play TTS using streaming pipeline
+  /// Streams audio chunks from backend and plays them with lowest latency
+  void _playStreamingTts(ChatMessage message) async {
     if (!mounted) return;
 
     // Don't play TTS if message is still streaming
@@ -1650,190 +1652,6 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
     // If this message was paused, resume it
     if (_currentPlayingMessageId == message.id && !_isAudioPlaying && _currentAudio != null) {
       _resumeAudio();
-      return;
-    }
-
-    // Stop any currently playing audio
-    _stopAudio();
-
-    // Set loading state
-    setState(() {
-      _isAudioLoading = true;
-      _currentPlayingMessageId = message.id;
-    });
-
-    try {
-      // Log the raw text being sent to backend for LLM cleaning
-      _log.info('===== TTS RAW TEXT (SENDING TO BACKEND) =====');
-      _log.info(message.text);
-      _log.info('==============================================');
-
-      // Send raw text to backend - LLM will clean it there
-      final textToSend = message.text;
-
-      // Skip TTS if text is empty
-      if (textToSend.isEmpty) {
-        if (mounted) {
-          setState(() {
-            _isAudioLoading = false;
-            _currentPlayingMessageId = null;
-          });
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'No speakable content in message',
-                style: TextStyle(fontSize: 12, color: Colors.white),
-              ),
-              duration: Duration(seconds: 2),
-              backgroundColor: Colors.orange.withValues(alpha: 0.85),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-        }
-        return;
-      }
-
-      // Show loading snackbar
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SizedBox(
-                width: 14,
-                height: 14,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: Colors.white,
-                ),
-              ),
-              const SizedBox(width: 6),
-              Flexible(
-                child: Text(
-                  'Generating audio...',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.white,
-                  ),
-                  softWrap: true,
-                ),
-              ),
-            ],
-          ),
-          duration: Duration(seconds: 3),
-          backgroundColor: Colors.blue.withValues(alpha: 0.85),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppConstants.snackBarRadius),
-          ),
-          elevation: 4,
-          width: MediaQuery.of(context).size.width * AppConstants.snackBarWidthFactor,
-        ),
-      );
-
-      // Get TTS settings
-      final ttsProvider = ref.read(ttsProviderProvider);
-      final ttsVoice = ref.read(ttsVoiceProvider);
-      final ttsSaveToVolume = ref.read(ttsSaveToVolumeProvider);
-
-      // Call backend TTS API with cleaned text
-      final response = await FastApiService.requestTts(
-        textToSend,  // Send raw text - backend will clean it using LLM
-        provider: ttsProvider,
-        voice: ttsVoice,
-        messageId: message.id,
-        saveToVolume: ttsSaveToVolume,
-      );
-
-      if (response.statusCode == 200 && mounted) {
-        _log.info('TTS response received: ${response.bodyBytes.length} bytes');
-
-        // Clear loading state and snackbar
-        setState(() {
-          _isAudioLoading = false;
-        });
-        ScaffoldMessenger.of(context).clearSnackBars();
-
-        // Play audio using web audio API
-        if (kIsWeb) {
-          try {
-            await _playAudioWeb(response.bodyBytes, message.id);
-
-            // Show success snackbar only if playback started
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.volume_up,
-                        size: 14,
-                        color: Colors.white,
-                      ),
-                      const SizedBox(width: 6),
-                      Flexible(
-                        child: Text(
-                          AppConstants.playingMessage,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                            color: Colors.white,
-                          ),
-                          softWrap: true,
-                        ),
-                      ),
-                    ],
-                  ),
-                  duration: AppConstants.snackBarShortDuration,
-                  backgroundColor: Colors.green.withValues(alpha: 0.85),
-                  behavior: SnackBarBehavior.floating,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(AppConstants.snackBarRadius),
-                  ),
-                  elevation: 4,
-                  width: MediaQuery.of(context).size.width * AppConstants.snackBarWidthFactor,
-                ),
-              );
-            }
-          } catch (playError) {
-            _log.severe('Audio playback error: $playError');
-            throw Exception('Audio playback failed: $playError');
-          }
-        }
-      } else {
-        throw Exception('TTS request failed: ${response.statusCode}');
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isAudioLoading = false;
-          _currentPlayingMessageId = null;
-        });
-        ScaffoldMessenger.of(context).clearSnackBars();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Failed to play audio: $e',
-              style: TextStyle(fontSize: 12, color: Colors.white),
-            ),
-            duration: Duration(seconds: 2),
-            backgroundColor: Colors.red.withValues(alpha: 0.85),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-    }
-  }
-
-  /// Play TTS using streaming pipeline (for eager mode)
-  /// Streams audio chunks from backend and plays them sequentially
-  void _playStreamingTts(ChatMessage message) async {
-    if (!mounted) return;
-
-    // Don't play TTS if message is still streaming
-    if (message.isStreaming) {
       return;
     }
 
@@ -1983,10 +1801,17 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
           _currentPlayingMessageId = null;
         });
         ScaffoldMessenger.of(context).clearSnackBars();
-
-        // Fall back to non-streaming TTS
-        _log.info('Falling back to non-streaming TTS');
-        _playTextToSpeech(message);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Failed to play audio: $e',
+              style: TextStyle(fontSize: 12, color: Colors.white),
+            ),
+            duration: Duration(seconds: 2),
+            backgroundColor: Colors.red.withValues(alpha: 0.85),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
       }
     }
   }
@@ -2437,97 +2262,6 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
         ),
       ),
     );
-  }
-
-  Future<void> _playAudioWeb(List<int> audioBytes, String messageId) async {
-    _log.fine('Audio playback started - ${audioBytes.length} bytes');
-
-    // Cache the audio bytes for potential download
-    _ttsAudioCache[messageId] = audioBytes;
-
-    // Convert bytes to base64
-    final base64Audio = base64Encode(audioBytes);
-    _log.fine('Base64 audio length: ${base64Audio.length}');
-
-    final dataUrl = 'data:audio/mpeg;base64,$base64Audio';
-    _log.fine('Data URL created (first 100 chars): ${dataUrl.substring(0, 100)}...');
-
-    // Create audio element with src in constructor (more reliable)
-    final audio = Audio(dataUrl);
-    _log.fine('Audio element created with src');
-
-    // Add event listeners for debugging
-    audio.onerror = ((JSAny? error) {
-      _log.warning('Audio error event: $error');
-      _log.warning('Audio src at error: ${audio.src}');
-    }).toJS;
-
-    audio.onloadeddata = ((JSAny? event) {
-      _log.fine('Audio loaded data event');
-    }).toJS;
-
-    audio.oncanplay = ((JSAny? event) {
-      _log.fine('Audio can play event');
-    }).toJS;
-
-    audio.onended = ((JSAny? event) {
-      _log.fine('Audio ended event');
-      if (mounted) {
-        setState(() {
-          _currentAudio = null;
-          _currentPlayingMessageId = null;
-          _isAudioPlaying = false;
-        });
-      }
-    }).toJS;
-
-    // Store reference to current audio
-    _currentAudio = audio;
-    _currentPlayingMessageId = messageId;
-    _log.fine('Audio reference stored');
-
-    // Try to play with better error handling
-    _log.fine('About to call play()...');
-    try {
-      // Load the audio first
-      audio.load();
-      _log.fine('Audio load() called');
-
-      // Small delay to allow loading
-      await Future.delayed(Duration(milliseconds: 100));
-
-      final playPromise = audio.play();
-      _log.fine('play() called, awaiting promise...');
-      await playPromise.toDart;
-      _log.info('Audio play promise resolved');
-
-      _isAudioPlaying = true;
-      _log.info('Audio playing successfully');
-
-      // Update state to reflect playback
-      if (mounted) {
-        setState(() {});
-      }
-    } catch (playError) {
-      _log.severe('Audio play error: $playError');
-      _log.severe('Error type: ${playError.runtimeType}');
-
-      // Check if it's an autoplay error
-      final errorStr = playError.toString().toLowerCase();
-      if (errorStr.contains('autoplay') || errorStr.contains('notallowederror')) {
-        throw Exception('Browser blocked autoplay. Please interact with the page first.');
-      }
-
-      _currentAudio = null;
-      _currentPlayingMessageId = null;
-      _isAudioPlaying = false;
-      if (mounted) {
-        setState(() {});
-      }
-      rethrow;
-    }
-
-    _log.fine('Audio playback setup complete');
   }
 
 }

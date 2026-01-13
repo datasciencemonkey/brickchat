@@ -295,18 +295,29 @@ class ChatDatabase:
         } for r in results]
 
 
-    def update_message_tts_cache(self, message_id: str, tts_cache: Dict) -> bool:
-        """Update message metadata with TTS cache info"""
-        query = """
-            UPDATE chat_messages
-            SET metadata = COALESCE(metadata, '{}'::jsonb) || %s
-            WHERE message_id = %s
-            RETURNING message_id
-        """
-        result = self.db.execute_query_one(
-            query,
-            (Json({"tts_cache": tts_cache}), message_id)
-        )
+    def update_message_tts_cache(self, message_id: str, tts_cache: Optional[Dict]) -> bool:
+        """Update message metadata with TTS cache info, or clear it if None"""
+        if tts_cache is None:
+            # Clear the tts_cache key from metadata
+            query = """
+                UPDATE chat_messages
+                SET metadata = COALESCE(metadata, '{}'::jsonb) - 'tts_cache'
+                WHERE message_id = %s
+                RETURNING message_id
+            """
+            result = self.db.execute_query_one(query, (message_id,))
+        else:
+            # Set/update the tts_cache
+            query = """
+                UPDATE chat_messages
+                SET metadata = COALESCE(metadata, '{}'::jsonb) || %s
+                WHERE message_id = %s
+                RETURNING message_id
+            """
+            result = self.db.execute_query_one(
+                query,
+                (Json({"tts_cache": tts_cache}), message_id)
+            )
         return result is not None
 
     def get_message_tts_cache(self, message_id: str, user_id: str) -> Optional[Dict]:

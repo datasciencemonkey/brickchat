@@ -11,8 +11,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 #### Databricks Configuration
 The backend connects to Databricks serving endpoints using OpenAI-compatible API format:
 - **API Pattern**: OpenAI chat completions with streaming support
-- **Model**: `ka-4b190238-endpoint`
-- **Base URL**: `https://adb-984752964297111.11.azuredatabricks.net/serving-endpoints`
+- **Model**: ``
+- **Base URL**: ``
 - **Authentication**: Personal access token via environment variables
 
 #### Backend Server Details
@@ -20,28 +20,58 @@ The backend connects to Databricks serving endpoints using OpenAI-compatible API
 - **Port**: 8000
 - **Health Check**: `GET /health`
 - **Chat Endpoint**: `POST /api/chat/send` (streaming SSE response)
+- **Auth Endpoint**: `GET /api/auth/me` (debug endpoint for user identity)
 - **Static Files**: Serves Flutter WASM build from `../build/web`
 - **CORS**: Enabled for development
 
+#### On-Behalf-Of Authentication (Databricks Apps)
+When deployed to Databricks Apps, user authentication is handled automatically via forwarded headers:
+- **X-Forwarded-Email**: User's email address
+- **X-Forwarded-Preferred-Username**: Username
+- **X-Forwarded-User**: User identifier
+- **X-Real-Ip**: User's IP address
+- **X-Forwarded-Access-Token**: User's access token for downstream API calls
+
+The `auth.py` module provides:
+- `UserContext` class: Encapsulates user identity and provides `get_workspace_client()` for on-behalf-of Databricks API calls
+- `get_current_user()` dependency: Extracts user context from headers, falls back to `dev_user` for local development
+
+**Usage in routers:**
+```python
+from auth import get_current_user, UserContext
+
+@router.post("/endpoint")
+async def my_endpoint(user: UserContext = Depends(get_current_user)):
+    # Access user identity
+    print(f"User: {user.user_id}, Email: {user.email}")
+
+    # Make on-behalf-of API calls to Databricks
+    if user.is_authenticated:
+        workspace_client = user.get_workspace_client()
+        # Use workspace_client for Unity Catalog, Volumes, etc.
+```
+
 #### Critical Implementation Pattern
+The chat endpoint uses the **Responses API** (not `chat.completions`), which supports agent-style interactions with citations/annotations:
+
 ```python
 from openai import OpenAI
 
 # Client initialization for Databricks
-databricks_client = OpenAI(
+client = OpenAI(
     api_key=DATABRICKS_TOKEN,
     base_url=DATABRICKS_BASE_URL
 )
 
-# Streaming API call
-response = databricks_client.chat.completions.create(
+# Responses API call (for agent endpoints with citations)
+response = client.responses.create(
     model=DATABRICKS_MODEL,
-    messages=input_messages,
-    max_tokens=1500,
-    temperature=0.7,
+    input=input_array,  # List of {"role": "user/assistant", "content": "..."}
     stream=True
 )
 ```
+
+**Note:** The TTS router uses `chat.completions.create()` for simple text generation, but the main chat endpoint uses `responses.create()` for richer output including annotations and citations.
 
 ## Common Commands
 
@@ -245,6 +275,7 @@ bool isDark = ref.isDarkMode;
 - **Environment**: `.env` file for sensitive configuration
 - **API Format**: OpenAI-compatible endpoints for Databricks integration
 - **Streaming**: Server-Sent Events (SSE) for real-time responses
+- **Authentication**: `databricks-sdk` for on-behalf-of user context and workspace client
 
 ### State Management Setup
 The app uses ProviderScope at the root level with:
@@ -272,9 +303,9 @@ The app uses ProviderScope at the root level with:
 - ✅ Settings page with stream toggle
 - ✅ File selector integration (WASM compatible)
 - ✅ Real-time conversation state management
+- ✅ On-behalf-of authentication for Databricks Apps (web deployment)
 
 ### Planned Features
-- 🔲 User authentication system
 - 🔲 Message persistence and synchronization
 - 🔲 Enhanced file attachment support
 - 🔲 Multi-user chat rooms
@@ -298,6 +329,7 @@ The app uses ProviderScope at the root level with:
 - Use `uv` for all Python package management (as per user preferences)
 - Test full stack via `http://localhost:8000`, not direct file access
 - **Backend Development**: Always work in the `backend/` folder for backend dev efforts. Once work is done, port changes over to the `deployment/` folder
+- **Plan Mode Plans**: Write all plan mode plans to the `plan_mode_plans/` folder
 
 ### Security Considerations
 - Microphone permissions require HTTPS or localhost

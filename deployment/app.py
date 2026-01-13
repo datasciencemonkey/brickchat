@@ -23,10 +23,12 @@ app = FastAPI(title="BrickChat Web App", version="1.0.0")
 # Log startup information
 logger.info("Starting BrickChat FastAPI Backend")
 logger.info(f"Current working directory: {os.getcwd()}")
-logger.info("Looking for build at: build/ or ../build/web")
+logger.info(f"Looking for build at: build/ or build/web or ../build/web")
 if os.path.exists("build/index.html"):
     logger.info("✓ Found build at: build/")
-elif os.path.exists("../build/web/index.html"):
+elif os.path.exists("build/web"):
+    logger.info("✓ Found build at: build/web")
+elif os.path.exists("../build/web"):
     logger.info("✓ Found build at: ../build/web")
 else:
     logger.warning("✗ Flutter build not found!")
@@ -72,10 +74,12 @@ async def debug_info():
         "cwd": os.getcwd(),
         "build_exists": {
             "build/": os.path.exists("build"),
+            "build/web": os.path.exists("build/web"),
             "../build/web": os.path.exists("../build/web"),
         },
         "index_exists": {
             "build/index.html": os.path.exists("build/index.html"),
+            "build/web/index.html": os.path.exists("build/web/index.html"),
             "../build/web/index.html": os.path.exists("../build/web/index.html"),
         },
         "files_in_cwd": os.listdir(".")[:20] if os.path.exists(".") else []
@@ -84,10 +88,13 @@ async def debug_info():
 @app.get("/")
 async def read_index():
     """Serve the main Flutter web app"""
-    # Try deployment path first (build/), then development path (../build/web/)
+    # Try deployment path first (build/), then alternative paths
     if os.path.exists("build/index.html"):
         logger.info("Serving index from: build/index.html")
         return FileResponse("build/index.html")
+    elif os.path.exists("build/web/index.html"):
+        logger.info("Serving index from: build/web/index.html")
+        return FileResponse("build/web/index.html")
     elif os.path.exists("../build/web/index.html"):
         logger.info("Serving index from: ../build/web/index.html")
         return FileResponse("../build/web/index.html")
@@ -102,10 +109,13 @@ async def read_index():
 
 # Mount static files AFTER API routes to avoid conflicts
 # This serves all the Flutter web assets (JS, CSS, images, etc.)
-# Check deployment path first (build/), then development path (../build/web/)
+# Check deployment path first (build/), then alternative paths
 if os.path.exists("build/index.html"):
     app.mount("/assets", StaticFiles(directory="build/assets"), name="assets")
     app.mount("/", StaticFiles(directory="build", html=True), name="static_files")
+elif os.path.exists("build/web"):
+    app.mount("/assets", StaticFiles(directory="build/web/assets"), name="assets")
+    app.mount("/", StaticFiles(directory="build/web", html=True), name="static_files")
 elif os.path.exists("../build/web"):
     app.mount("/assets", StaticFiles(directory="../build/web/assets"), name="assets")
     app.mount("/", StaticFiles(directory="../build/web", html=True), name="static_files")

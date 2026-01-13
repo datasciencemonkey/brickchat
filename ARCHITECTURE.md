@@ -2,6 +2,29 @@
 
 ## High-Level Architecture
 
+```mermaid
+flowchart TB
+    subgraph DB_APPS["Databricks Apps"]
+        subgraph APP["BrickChat Application"]
+            UI["Flutter Web UI<br/>(WASM Build)"]
+            API["FastAPI Backend<br/>(Port 8000)"]
+            PG[("PostgreSQL<br/>Chat History")]
+        end
+    end
+
+    UI -->|"HTTP/SSE"| API
+    API -->|"SQL"| PG
+    API -->|"OpenAI API"| DAI["Databricks AI<br/>Serving Endpoint"]
+    API -->|"TTS API"| DG["Deepgram<br/>(Aura Voices)"]
+    API -->|"TTS API"| REP["Replicate<br/>(Kokoro-82M)"]
+
+    style DB_APPS fill:#ff6b35,color:#fff
+    style APP fill:#fff,stroke:#ff6b35
+```
+
+<details>
+<summary>ASCII Diagram (click to expand)</summary>
+
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                         DATABRICKS APPS                                  │
@@ -41,6 +64,8 @@
         │  (ka-4b190238)  │ │             │ │              │
         └─────────────────┘ └─────────────┘ └──────────────┘
 ```
+
+</details>
 
 ## Component Breakdown
 
@@ -234,6 +259,30 @@ User clicks like/dislike
 
 ### Chat Message Flow (Streaming)
 
+```mermaid
+sequenceDiagram
+    participant User
+    participant Flutter as Flutter UI
+    participant FastAPI as FastAPI Backend
+    participant DB as Databricks AI
+
+    User->>Flutter: Type message
+    Flutter->>FastAPI: POST /api/chat/send<br/>(message + history)
+    FastAPI->>DB: OpenAI API call<br/>(stream=True)
+
+    loop SSE Streaming
+        DB-->>FastAPI: Response chunk
+        FastAPI-->>Flutter: Server-Sent Event
+        Flutter-->>User: Display word
+    end
+
+    FastAPI->>FastAPI: Save to PostgreSQL
+    Flutter->>User: Complete response
+```
+
+<details>
+<summary>ASCII Diagram (click to expand)</summary>
+
 ```
 User Input
    │
@@ -277,7 +326,34 @@ User Input
 └─────────────────┘
 ```
 
+</details>
+
 ### Text-to-Speech Flow
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Flutter as Flutter UI
+    participant FastAPI as FastAPI Backend
+    participant TTS as TTS Provider<br/>(Deepgram/Replicate)
+
+    User->>Flutter: Click speaker icon
+    Flutter->>FastAPI: POST /api/tts/generate<br/>{text, provider, voice}
+    FastAPI->>FastAPI: Clean text via LLM<br/>(cached)
+
+    alt Deepgram
+        FastAPI->>TTS: Deepgram Aura API
+    else Replicate
+        FastAPI->>TTS: Replicate Kokoro API
+    end
+
+    TTS-->>FastAPI: Audio URL
+    FastAPI-->>Flutter: {audio_url}
+    Flutter->>User: Play audio
+```
+
+<details>
+<summary>ASCII Diagram (click to expand)</summary>
 
 ```
 User clicks speaker icon
@@ -326,6 +402,8 @@ User clicks speaker icon
    │ Audio().play()  │◄──────────┘
    └─────────────────┘
 ```
+
+</details>
 
 ### Voice Input Flow
 
@@ -399,6 +477,28 @@ User clicks microphone
 - Extensions for convenient access (`ref.streamResults`)
 
 ## Security & Configuration
+
+### Authentication Flow (Databricks Apps)
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Browser
+    participant DBApps as Databricks Apps<br/>(Proxy)
+    participant API as FastAPI Backend
+
+    User->>Browser: Access BrickChat URL
+    Browser->>DBApps: Request with SSO
+    DBApps->>DBApps: Authenticate via<br/>Databricks SSO
+
+    DBApps->>API: Forward request +<br/>X-Forwarded-* headers
+    Note right of API: X-Forwarded-Email<br/>X-Forwarded-User<br/>X-Forwarded-Access-Token
+
+    API->>API: Extract UserContext<br/>from headers
+    API-->>DBApps: Response
+    DBApps-->>Browser: Response
+    Browser-->>User: Authenticated UI
+```
 
 ### Environment Variables (app.yaml)
 
@@ -582,5 +682,5 @@ User Load → Databricks Apps → Auto-scaling Serverless Compute
 
 ---
 
-**Architecture Version**: 1.0.0
-**Last Updated**: October 2025
+**Architecture Version**: 1.1.0
+**Last Updated**: January 2026

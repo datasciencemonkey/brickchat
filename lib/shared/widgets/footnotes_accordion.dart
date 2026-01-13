@@ -1,7 +1,15 @@
+import 'dart:js_interop';
+
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/constants/app_constants.dart';
 import 'package:url_launcher/url_launcher.dart';
+
+/// JS interop for clipboard access (web platform)
+@JS('navigator.clipboard.writeText')
+external JSPromise<JSAny?> _writeTextToClipboard(String text);
 
 /// Widget to display source citations from the model response.
 /// Citations contain title and URL linking to the source document.
@@ -24,6 +32,28 @@ class _SourcesAccordionState extends State<SourcesAccordion> {
     final uri = Uri.parse(url);
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+
+  Future<void> _copyUrlToClipboard(String url) async {
+    try {
+      if (kIsWeb) {
+        await _writeTextToClipboard(url).toDart;
+      } else {
+        await Clipboard.setData(ClipboardData(text: url));
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Source URL copied!'),
+            duration: const Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      // Fallback for clipboard errors
+      await Clipboard.setData(ClipboardData(text: url));
     }
   }
 
@@ -112,28 +142,38 @@ class _SourcesAccordionState extends State<SourcesAccordion> {
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Citation number badge
-                        Container(
-                          key: ValueKey('citation-$number'),
-                          margin: const EdgeInsets.only(top: 2),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: appColors.accent.withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(4),
-                            border: Border.all(
-                              color: appColors.accent.withValues(alpha: 0.3),
-                              width: 0.5,
-                            ),
-                          ),
-                          child: Text(
-                            number.toString(),
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: appColors.accent,
+                        // Citation number badge (tap to copy URL)
+                        GestureDetector(
+                          onTap: url.isNotEmpty
+                              ? () => _copyUrlToClipboard(url)
+                              : null,
+                          child: MouseRegion(
+                            cursor: url.isNotEmpty
+                                ? SystemMouseCursors.click
+                                : SystemMouseCursors.basic,
+                            child: Container(
+                              key: ValueKey('citation-$number'),
+                              margin: const EdgeInsets.only(top: 2),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: appColors.accent.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(4),
+                                border: Border.all(
+                                  color: appColors.accent.withValues(alpha: 0.3),
+                                  width: 0.5,
+                                ),
+                              ),
+                              child: Text(
+                                number.toString(),
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: appColors.accent,
+                                ),
+                              ),
                             ),
                           ),
                         ),

@@ -53,15 +53,33 @@ digraph deployment {
     "Gather info (app name, profile)" -> "Check app exists";
     "Check app exists" -> "App exists?" [shape=diamond];
     "App exists?" -> "Create app" [label="no"];
-    "App exists?" -> "Update deployment files" [label="yes"];
-    "Create app" -> "Update deployment files";
+    "App exists?" -> "Prepare .gitignore (comment out build/)" [label="yes"];
+    "Create app" -> "Prepare .gitignore (comment out build/)";
+    "Prepare .gitignore (comment out build/)" -> "Update deployment files";
     "Update deployment files" -> "Sync to workspace";
     "Sync to workspace" -> "Deploy from workspace";
     "Deploy from workspace" -> "Verify deployment";
+    "Verify deployment" -> "Restore .gitignore (uncomment build/)";
 }
 ```
 
-## Step 1: Update Deployment Files
+## Step 1: Prepare .gitignore for Deployment
+
+**CRITICAL:** The `build/` and `deployment/build/` folders must be tracked in git for workspace sync to work. Before deployment, temporarily modify `.gitignore`:
+
+```bash
+# Comment out build folders in .gitignore
+sed -i '' 's/^build\/$/# build\//' .gitignore
+sed -i '' 's/^deployment\/build\/$/# deployment\/build\//' .gitignore
+```
+
+**Verify the change:**
+```bash
+grep -E "^#?\s*build\/" .gitignore
+# Should show: # build/
+```
+
+## Step 2: Update Deployment Files
 
 **Option A: Use the update script**
 ```bash
@@ -94,7 +112,7 @@ cd backend && uv pip freeze > ../deployment/requirements.txt
 - `backend/app.py` references `build/web/` or `../build/web/`
 - See Troubleshooting section if frontend doesn't load
 
-## Step 2: Configure Secrets (First Deployment Only)
+## Step 3: Configure Secrets (First Deployment Only)
 
 Secrets are referenced in `app.yaml` using `valueFrom`:
 
@@ -106,7 +124,7 @@ Secrets are referenced in `app.yaml` using `valueFrom`:
 
 Configure in Databricks workspace settings or via CLI.
 
-## Step 3: Local Testing
+## Step 4: Local Testing
 
 ```bash
 cd deployment
@@ -120,7 +138,7 @@ Verify at `http://localhost:8000`:
 - Health check: `curl http://localhost:8000/health`
 - Chat functionality works
 
-## Step 4: Sync to Databricks Workspace
+## Step 5: Sync to Databricks Workspace
 
 **IMPORTANT:** The `databricks apps deploy` command requires a **workspace path**, not a local path. You must sync local files to the workspace first.
 
@@ -131,7 +149,7 @@ databricks sync ./deployment /Workspace/Users/<YOUR_EMAIL>/brickchat --profile <
 
 Replace `<YOUR_EMAIL>` with the user's Databricks email (can be found from `databricks apps get` output under `creator` field).
 
-## Step 5: Deploy from Workspace
+## Step 6: Deploy from Workspace
 
 ```bash
 # Deploy from the workspace path (NOT local path)
@@ -144,7 +162,7 @@ For subsequent updates:
 1. Run the sync command again
 2. Run the deploy command again
 
-## Step 6: Verify Deployment
+## Step 7: Verify Deployment
 
 ```bash
 # Check app status
@@ -160,17 +178,37 @@ databricks apps logs <APP_NAME> --profile <PROFILE>
 - `active_deployment.status.state`: `SUCCEEDED`
 - `url`: The app URL will be displayed
 
+## Step 8: Restore .gitignore
+
+**CRITICAL:** After successful deployment, restore `.gitignore` to ignore build folders again:
+
+```bash
+# Uncomment build folders in .gitignore
+sed -i '' 's/^# build\/$/build\//' .gitignore
+sed -i '' 's/^# deployment\/build\/$/deployment\/build\//' .gitignore
+```
+
+**Verify the restore:**
+```bash
+grep -E "^build\/" .gitignore
+# Should show: build/
+```
+
+This prevents accidental commits of large build artifacts to the repository.
+
 ## Quick Reference
 
 | Task | Command |
 |------|---------|
 | Check app exists | `databricks apps get <APP_NAME> --profile <PROFILE>` |
 | Create app (once) | `databricks apps create <APP_NAME> --description "BrickChat - AI Chat Application" --profile <PROFILE>` |
+| Prepare .gitignore | `sed -i '' 's/^build\/$/# build\//' .gitignore && sed -i '' 's/^deployment\/build\/$/# deployment\/build\//' .gitignore` |
 | Update deployment | `cd deployment && ./update_deployment.sh` |
 | Local test | `cd deployment && uv run uvicorn app:app --host 0.0.0.0 --port 8000` |
 | Sync to workspace | `databricks sync ./deployment /Workspace/Users/<EMAIL>/brickchat --profile <PROFILE> --full` |
 | Deploy | `databricks apps deploy <APP_NAME> --source-code-path /Workspace/Users/<EMAIL>/brickchat --profile <PROFILE>` |
 | Check status | `databricks apps get <APP_NAME> --profile <PROFILE>` |
+| Restore .gitignore | `sed -i '' 's/^# build\/$/build\//' .gitignore && sed -i '' 's/^# deployment\/build\/$/deployment\/build\//' .gitignore` |
 | View logs | `databricks apps logs <APP_NAME> --profile <PROFILE>` |
 | Health check | `curl http://localhost:8000/health` |
 

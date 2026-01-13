@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
 from fastapi.responses import StreamingResponse
 from openai import OpenAI
 import os
@@ -13,6 +13,84 @@ load_dotenv()
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
+# =============================================================================
+# Pre-compiled regex patterns (compiled once at module load, not per-request)
+# =============================================================================
+
+# Patterns to detect Knowledge Assistant reasoning phrases
+_REASONING_PATTERNS = [
+    r'Establishing a working model',
+    r'Decomposing the question',
+    r'targeted sub-queries',
+    r'Consolidating results',
+    r'across sub-queries',
+    r'Searching [a-zA-Z0-9\-]+\.\.\.',
+    r'Staging key excerpts',
+    r'for inspection',
+    r'The user asked:',
+    r'The provided source is',
+    r'I will extract',
+    r'salient points',
+    r'No external search needed',
+    r'For retrieval query',
+    r'produce a clear',
+    r'unambiguous query',
+    r'unique aspects',
+    r'I have several documents',
+    r'Let me pull together',
+    r'key highlights',
+]
+_REASONING_REGEX = re.compile('|'.join(_REASONING_PATTERNS), re.IGNORECASE)
+
+# Pattern to detect actual content start
+_CONTENT_START_PATTERNS = [
+    r'^Key\s+(Q\d+|[\w\s]+)\s+results?:',
+    r'^\s*[-•*]\s+',
+    r'^\s*\d+\.\s+',
+    r'^Here are',
+    r'^Based on',
+    r'^The (key|main|primary)',
+    r'^\*\*',
+    r'^#{1,6}\s+',
+]
+_CONTENT_START_REGEX = re.compile('|'.join(_CONTENT_START_PATTERNS), re.MULTILINE | re.IGNORECASE)
+
+# Patterns for inline reasoning detection in streaming
+_INLINE_REASONING_PATTERNS = [
+    r'Mapping query intent',
+    r'Filtering to the highest-value',
+    r'Searching [a-zA-Z0-9\-]+\.\.\.',
+    r'Structuring selected content',
+    r'answer synthesis',
+    r'Establishing a working model',
+    r'Decomposing the question',
+    r'targeted sub-queries',
+    r'Consolidating results',
+    r'Staging key excerpts',
+    r'for inspection',
+    r'salient points',
+    r'For retrieval query',
+    r'Let me pull together',
+]
+_INLINE_REASONING_REGEX = re.compile('|'.join(_INLINE_REASONING_PATTERNS), re.IGNORECASE)
+
+# Patterns that indicate actual content has started
+_REAL_CONTENT_PATTERNS = [
+    r'^Great question',
+    r'^Here are',
+    r'^Based on',
+    r'^The (key|main|primary|top)',
+    r'^\*\*[A-Z]',  # Bold header starting with capital
+    r'^I\'m happy to',
+    r'^Thank you for',
+    r'^Let me share',
+    r'^Here\'s what',
+]
+_REAL_CONTENT_REGEX = re.compile('|'.join(_REAL_CONTENT_PATTERNS), re.IGNORECASE)
+
+# Configuration
+MAX_CONVERSATION_MESSAGES = int(os.environ.get('MAX_CONVERSATION_MESSAGES', '20'))
+
 # Initialize database for message tracking
 chat_db = initialize_database()
 logger = logging.getLogger(__name__)
@@ -22,56 +100,37 @@ DATABRICKS_TOKEN = os.environ.get('DATABRICKS_TOKEN', '')
 DATABRICKS_BASE_URL = os.environ.get('DATABRICKS_BASE_URL', '')
 DATABRICKS_MODEL = os.environ.get('DATABRICKS_MODEL')
 
-# Initialize Databricks client
-client = OpenAI(
-    api_key=DATABRICKS_TOKEN,
-    base_url=DATABRICKS_BASE_URL
-)
+
+def get_databricks_client(user: UserContext) -> OpenAI:
+    """
+    Get an OpenAI client configured for Databricks.
+
+    Uses the user's forwarded access token for on-behalf-of authentication
+    when available (in Databricks Apps), otherwise falls back to the
+    server's DATABRICKS_TOKEN for local development.
+    """
+    # Use user's token for on-behalf-of calls when authenticated
+    if user.is_authenticated and user.access_token:
+        logger.debug(f"Using user token for {user.user_id}")
+        return OpenAI(
+            api_key=user.access_token,
+            base_url=DATABRICKS_BASE_URL
+        )
+
+    # Fallback to server token for local development
+    logger.debug("Using server token (local development mode)")
+    return OpenAI(
+        api_key=DATABRICKS_TOKEN,
+        base_url=DATABRICKS_BASE_URL
+    )
 
 
 def _wrap_reasoning_in_response(full_response: str) -> str:
     """
     Process the full response to wrap reasoning content in <think> tags.
     This ensures stored messages have proper structure for the frontend.
+    Uses pre-compiled module-level regex patterns for performance.
     """
-    # Patterns to detect Knowledge Assistant reasoning phrases
-    reasoning_patterns = [
-        r'Establishing a working model',
-        r'Decomposing the question',
-        r'targeted sub-queries',
-        r'Consolidating results',
-        r'across sub-queries',
-        r'Searching [a-zA-Z0-9\-]+\.\.\.',
-        r'Staging key excerpts',
-        r'for inspection',
-        r'The user asked:',
-        r'The provided source is',
-        r'I will extract',
-        r'salient points',
-        r'No external search needed',
-        r'For retrieval query',
-        r'produce a clear',
-        r'unambiguous query',
-        r'unique aspects',
-        r'I have several documents',
-        r'Let me pull together',
-        r'key highlights',
-    ]
-    reasoning_regex = re.compile('|'.join(reasoning_patterns), re.IGNORECASE)
-
-    # Pattern to detect actual content start
-    content_start_patterns = [
-        r'^Key\s+(Q\d+|[\w\s]+)\s+results?:',
-        r'^\s*[-•*]\s+',
-        r'^\s*\d+\.\s+',
-        r'^Here are',
-        r'^Based on',
-        r'^The (key|main|primary)',
-        r'^\*\*',
-        r'^#{1,6}\s+',
-    ]
-    content_start_regex = re.compile('|'.join(content_start_patterns), re.MULTILINE | re.IGNORECASE)
-
     # Split into lines/paragraphs and find where reasoning ends
     lines = full_response.split('\n')
     reasoning_lines = []
@@ -80,8 +139,8 @@ def _wrap_reasoning_in_response(full_response: str) -> str:
 
     for line in lines:
         if in_reasoning:
-            # Check if this line starts actual content
-            if content_start_regex.search(line) and not reasoning_regex.search(line):
+            # Check if this line starts actual content (using pre-compiled patterns)
+            if _CONTENT_START_REGEX.search(line) and not _REASONING_REGEX.search(line):
                 in_reasoning = False
                 content_lines.append(line)
             else:
@@ -125,11 +184,15 @@ async def get_user_threads(user: UserContext = Depends(get_current_user)):
 
 
 @router.get("/threads/{thread_id}/messages")
-async def get_thread_messages(thread_id: str):
-    """Get all messages for a specific thread"""
+async def get_thread_messages(
+    thread_id: str,
+    limit: int = Query(default=None, ge=1, le=500, description="Maximum messages to return (default: all)"),
+    offset: int = Query(default=0, ge=0, description="Number of messages to skip")
+):
+    """Get messages for a specific thread with optional pagination"""
     try:
-        messages = chat_db.get_thread_messages(thread_id)
-        return {"messages": messages}
+        messages = chat_db.get_thread_messages(thread_id, limit=limit, offset=offset)
+        return {"messages": messages, "limit": limit, "offset": offset}
     except Exception as e:
         logger.error(f"Error fetching thread messages: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch messages: {str(e)}")
@@ -144,8 +207,17 @@ async def send_message(message: dict, user: UserContext = Depends(get_current_us
         if not message_text:
             raise HTTPException(status_code=400, detail="Message text is required")
 
-        # Extract conversation history (optional)
+        # Extract conversation history (optional) and apply limits to prevent token explosion
         conversation_history = message.get("conversation_history", [])
+
+        # Limit conversation history to prevent excessive token usage
+        if len(conversation_history) > MAX_CONVERSATION_MESSAGES:
+            # Preserve system prompt if present, then take most recent messages
+            if conversation_history and conversation_history[0].get('role') == 'system':
+                conversation_history = [conversation_history[0]] + conversation_history[-(MAX_CONVERSATION_MESSAGES - 1):]
+            else:
+                conversation_history = conversation_history[-MAX_CONVERSATION_MESSAGES:]
+            logger.info(f"Truncated conversation history to {len(conversation_history)} messages (max: {MAX_CONVERSATION_MESSAGES})")
 
         # Extract stream parameter (defaults to True for backward compatibility)
         use_streaming = message.get("stream", True)
@@ -168,12 +240,15 @@ async def send_message(message: dict, user: UserContext = Depends(get_current_us
             agent_endpoint=None  # User messages don't have agent endpoint
         )
 
-        # Check if Databricks client is configured
-        if not DATABRICKS_TOKEN:
+        # Check if we have a valid token (user's token or server token)
+        if not user.is_authenticated and not DATABRICKS_TOKEN:
             raise HTTPException(
                 status_code=503,
-                detail="Databricks token not configured. Please set DATABRICKS_TOKEN environment variable."
+                detail="No authentication token available. Please set DATABRICKS_TOKEN environment variable for local development."
             )
+
+        # Get client with appropriate token (user's on-behalf-of token or server token)
+        client = get_databricks_client(user)
 
         # Prepare the input array for Databricks endpoint
         input_array = []
@@ -209,57 +284,29 @@ async def send_message(message: dict, user: UserContext = Depends(get_current_us
                     # Send metadata first (thread_id, user_message_id, agent_endpoint)
                     yield f"data: {json.dumps({'metadata': {'thread_id': thread_id, 'user_message_id': user_message_id, 'user_id': user_id, 'agent_endpoint': DATABRICKS_MODEL}})}\n\n"
 
-                    # Collect content and citations
-                    full_response = ""
-                    reasoning_content = ""
-                    output_content = ""
-                    citations = []  # List of {content_index, title, url}
+                    # Use list accumulation for better performance (avoid string += overhead)
+                    full_response_parts = []
+                    reasoning_parts = []
+                    output_parts = []
+                    text_buffer_parts = []
+                    inline_reasoning_parts = []
+
+                    # Citations with deduplication during collection
+                    citations = []
+                    seen_citation_urls = set()
                     current_content_index = 0
 
-                    # Buffer for detecting inline reasoning in text stream
-                    text_buffer = ""
+                    # Buffer state for detecting inline reasoning in text stream
                     in_inline_reasoning = True  # Start assuming we're in reasoning until we see real content
-                    inline_reasoning_collected = ""
 
-                    # Patterns that indicate inline reasoning (model "thinking out loud")
-                    inline_reasoning_patterns = [
-                        r'Mapping query intent',
-                        r'Filtering to the highest-value',
-                        r'Searching [a-zA-Z0-9\-]+\.\.\.',
-                        r'Structuring selected content',
-                        r'answer synthesis',
-                        r'Establishing a working model',
-                        r'Decomposing the question',
-                        r'targeted sub-queries',
-                        r'Consolidating results',
-                        r'Staging key excerpts',
-                        r'for inspection',
-                        r'salient points',
-                        r'For retrieval query',
-                        r'Let me pull together',
-                    ]
-                    inline_reasoning_regex = re.compile('|'.join(inline_reasoning_patterns), re.IGNORECASE)
-
-                    # Patterns that indicate actual content has started
-                    real_content_patterns = [
-                        r'^Great question',
-                        r'^Here are',
-                        r'^Based on',
-                        r'^The (key|main|primary|top)',
-                        r'^\*\*[A-Z]',  # Bold header starting with capital
-                        r'^I\'m happy to',
-                        r'^Thank you for',
-                        r'^Let me share',
-                        r'^Here\'s what',
-                    ]
-                    real_content_regex = re.compile('|'.join(real_content_patterns), re.IGNORECASE)
+                    # Use pre-compiled module-level regex patterns (_INLINE_REASONING_REGEX, _REAL_CONTENT_REGEX)
 
                     for chunk in response:
                         event_type = type(chunk).__name__
 
                         # Handle reasoning events (ResponseReasoningSummaryTextDeltaEvent)
                         if 'Reasoning' in event_type and hasattr(chunk, 'delta') and chunk.delta:
-                            reasoning_content += chunk.delta
+                            reasoning_parts.append(chunk.delta)
 
                         # Handle text output events (ResponseTextDeltaEvent)
                         elif event_type == 'ResponseTextDeltaEvent' and hasattr(chunk, 'delta') and chunk.delta:
@@ -268,44 +315,45 @@ async def send_message(message: dict, user: UserContext = Depends(get_current_us
                             # Check if this text contains </think> tag - everything before is reasoning
                             if '</think>' in delta:
                                 parts = delta.split('</think>', 1)
-                                inline_reasoning_collected += parts[0]
+                                inline_reasoning_parts.append(parts[0])
                                 in_inline_reasoning = False
                                 # The part after </think> is real content
                                 if len(parts) > 1:
                                     remaining = parts[1].lstrip('\n')
                                     if remaining:
-                                        output_content += remaining
-                                        full_response += remaining
+                                        output_parts.append(remaining)
+                                        full_response_parts.append(remaining)
                                         yield f"data: {json.dumps({'content': remaining})}\n\n"
                                 continue
 
                             # If we're still in potential reasoning phase, buffer the text
                             if in_inline_reasoning:
-                                text_buffer += delta
+                                text_buffer_parts.append(delta)
+                                text_buffer = ''.join(text_buffer_parts)
 
-                                # Check if buffer now contains real content start
-                                if real_content_regex.search(text_buffer):
+                                # Check if buffer now contains real content start (using pre-compiled pattern)
+                                if _REAL_CONTENT_REGEX.search(text_buffer):
                                     in_inline_reasoning = False
                                     # Everything in buffer is actual content
-                                    output_content += text_buffer
-                                    full_response += text_buffer
+                                    output_parts.append(text_buffer)
+                                    full_response_parts.append(text_buffer)
                                     yield f"data: {json.dumps({'content': text_buffer})}\n\n"
-                                    text_buffer = ""
-                                # Check if buffer looks like inline reasoning
-                                elif inline_reasoning_regex.search(text_buffer) or text_buffer.startswith('['):
+                                    text_buffer_parts.clear()
+                                # Check if buffer looks like inline reasoning (using pre-compiled pattern)
+                                elif _INLINE_REASONING_REGEX.search(text_buffer) or text_buffer.startswith('['):
                                     # Keep buffering as reasoning
-                                    inline_reasoning_collected += delta
+                                    inline_reasoning_parts.append(delta)
                                 # Buffer is getting long without clear signal - flush as content
                                 elif len(text_buffer) > 500:
                                     in_inline_reasoning = False
-                                    output_content += text_buffer
-                                    full_response += text_buffer
+                                    output_parts.append(text_buffer)
+                                    full_response_parts.append(text_buffer)
                                     yield f"data: {json.dumps({'content': text_buffer})}\n\n"
-                                    text_buffer = ""
+                                    text_buffer_parts.clear()
                             else:
                                 # We're past reasoning, stream content normally
-                                output_content += delta
-                                full_response += delta
+                                output_parts.append(delta)
+                                full_response_parts.append(delta)
                                 yield f"data: {json.dumps({'content': delta})}\n\n"
 
                             # Track content index (increments on major boundaries)
@@ -313,29 +361,35 @@ async def send_message(message: dict, user: UserContext = Depends(get_current_us
                                 current_content_index = chunk.content_index
 
                         # Handle annotation events (ResponseOutputTextAnnotationAddedEvent)
-                        # Note: In streaming mode, annotation is a dict, not an object
+                        # Deduplicate citations during collection (not after)
                         elif 'Annotation' in event_type:
                             ann = getattr(chunk, 'annotation', None)
                             content_idx = getattr(chunk, 'content_index', current_content_index)
 
                             if ann and isinstance(ann, dict):
-                                citation = {
-                                    'content_index': content_idx,
-                                    'title': ann.get('title'),
-                                    'url': ann.get('url'),
-                                    'type': ann.get('type', 'url_citation')
-                                }
-                                citations.append(citation)
-                                logger.info(f"[CITATION] Block {content_idx}: {citation['title']}")
+                                url = ann.get('url')
+                                # Deduplicate during collection using seen_citation_urls set
+                                if url and url not in seen_citation_urls:
+                                    seen_citation_urls.add(url)
+                                    citations.append({
+                                        'id': str(len(citations) + 1),
+                                        'content_index': content_idx,
+                                        'title': ann.get('title'),
+                                        'url': url,
+                                    })
+                                    logger.info(f"[CITATION] Block {content_idx}: {ann.get('title')}")
 
                     # If there's remaining buffer that never got flushed, treat it as content
+                    text_buffer = ''.join(text_buffer_parts)
                     if text_buffer and in_inline_reasoning:
                         # This was never clearly reasoning, so output it
-                        output_content += text_buffer
-                        full_response += text_buffer
+                        output_parts.append(text_buffer)
+                        full_response_parts.append(text_buffer)
                         yield f"data: {json.dumps({'content': text_buffer})}\n\n"
 
                     # Combine all reasoning content (from events + inline detected)
+                    reasoning_content = ''.join(reasoning_parts)
+                    inline_reasoning_collected = ''.join(inline_reasoning_parts)
                     all_reasoning = reasoning_content + inline_reasoning_collected
 
                     # After streaming completes, send reasoning wrapped in <think> tags
@@ -346,25 +400,13 @@ async def send_message(message: dict, user: UserContext = Depends(get_current_us
                             wrapped_reasoning = f"<think>\n{clean_reasoning}\n</think>\n\n"
                             yield f"data: {json.dumps({'reasoning': wrapped_reasoning})}\n\n"
 
-                    # Send citations if any were collected
+                    # Send citations if any were collected (already deduplicated during collection)
                     if citations:
-                        # Deduplicate citations by URL
-                        seen_urls = set()
-                        unique_citations = []
-                        for c in citations:
-                            if c['url'] and c['url'] not in seen_urls:
-                                seen_urls.add(c['url'])
-                                unique_citations.append({
-                                    'id': str(len(unique_citations) + 1),
-                                    'title': c['title'],
-                                    'url': c['url'],
-                                    'content_index': c['content_index']
-                                })
-
-                        logger.info(f"[CITATIONS] Sending {len(unique_citations)} unique citations")
-                        yield f"data: {json.dumps({'citations': unique_citations})}\n\n"
+                        logger.info(f"[CITATIONS] Sending {len(citations)} unique citations")
+                        yield f"data: {json.dumps({'citations': citations})}\n\n"
 
                     # Save assistant message to database
+                    output_content = ''.join(output_parts)
                     if output_content:
                         try:
                             # Combine all reasoning (events + inline) and output for storage
