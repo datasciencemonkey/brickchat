@@ -15,17 +15,24 @@ cd ..
 flutter build web --wasm
 
 # Step 2: Update deployment directory
+# Note: deployment/app.py expects build/ (not build/web/)
 echo "📁 Updating deployment directory..."
-rm -rf deployment/build/web
-mkdir -p deployment/build/web
-cp -r build/web/* deployment/build/web/
+rm -rf deployment/build
+mkdir -p deployment/build
+cp -r build/web/* deployment/build/
 
 # Step 3: Copy backend files (in case they changed)
+# WARNING: backend/app.py uses build/web/ paths, deployment/app.py uses build/ paths
+# Only copy app.py if you've updated the paths, otherwise skip it
 echo "🔧 Updating backend files..."
-cp backend/app.py deployment/
+echo "⚠️  Skipping app.py (different build paths - edit manually if needed)"
+# cp backend/app.py deployment/  # Uncomment only if paths are aligned
 cp backend/database.py deployment/
+cp backend/auth.py deployment/
 cp backend/schema.sql deployment/
-cp backend/routers/* deployment/routers/ 2>/dev/null || true
+cp backend/run_migration.py deployment/ 2>/dev/null || true
+cp backend/routers/__init__.py deployment/routers/ 2>/dev/null || true
+cp backend/routers/*.py deployment/routers/ 2>/dev/null || true
 cp -r backend/migrations/* deployment/migrations/ 2>/dev/null || true
 
 # Step 4: Update requirements.txt
