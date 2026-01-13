@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -21,13 +22,45 @@ final eagerModeProvider = StateNotifierProvider<EagerModeNotifier, bool>((ref) {
   return EagerModeNotifier();
 });
 
+/// Provider for TTS save-to-volume setting
+final ttsSaveToVolumeProvider = StateNotifierProvider<TtsSaveToVolumeNotifier, bool>((ref) {
+  return TtsSaveToVolumeNotifier();
+});
+
 /// Settings keys
 class SettingsKeys {
   static const String streamResults = 'stream_results';
   static const String ttsProvider = 'tts_provider';
   static const String ttsVoice = 'tts_voice';
   static const String eagerMode = 'eager_mode';
+  static const String voiceShortcut = 'voice_shortcut';
+  static const String ttsSaveToVolume = 'tts_save_to_volume';
 }
+
+/// Voice input shortcut options
+enum VoiceShortcut {
+  optionV('⌥V', LogicalKeyboardKey.keyV),
+  optionA('⌥A', LogicalKeyboardKey.keyA),
+  optionM('⌥M', LogicalKeyboardKey.keyM);
+
+  final String displayName;
+  final LogicalKeyboardKey logicalKey;
+  const VoiceShortcut(this.displayName, this.logicalKey);
+
+  String get value => name;
+
+  static VoiceShortcut fromValue(String value) {
+    return VoiceShortcut.values.firstWhere(
+      (e) => e.value == value,
+      orElse: () => VoiceShortcut.optionV,
+    );
+  }
+}
+
+/// Provider for voice input shortcut setting
+final voiceShortcutProvider = StateNotifierProvider<VoiceShortcutNotifier, VoiceShortcut>((ref) {
+  return VoiceShortcutNotifier();
+});
 
 /// Available TTS providers
 enum TtsProvider {
@@ -240,6 +273,69 @@ class EagerModeNotifier extends StateNotifier<bool> {
   }
 }
 
+/// Voice shortcut setting notifier
+class VoiceShortcutNotifier extends StateNotifier<VoiceShortcut> {
+  VoiceShortcutNotifier() : super(VoiceShortcut.optionV) {
+    _loadSetting();
+  }
+
+  /// Load the voice shortcut setting from SharedPreferences
+  Future<void> _loadSetting() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final shortcutValue = prefs.getString(SettingsKeys.voiceShortcut) ?? VoiceShortcut.optionV.value;
+      state = VoiceShortcut.fromValue(shortcutValue);
+    } catch (e) {
+      state = VoiceShortcut.optionV;
+    }
+  }
+
+  /// Set the voice shortcut
+  Future<void> setShortcut(VoiceShortcut shortcut) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(SettingsKeys.voiceShortcut, shortcut.value);
+      state = shortcut;
+    } catch (e) {
+      // If saving fails, state doesn't change
+    }
+  }
+}
+
+/// TTS save-to-volume setting notifier
+class TtsSaveToVolumeNotifier extends StateNotifier<bool> {
+  TtsSaveToVolumeNotifier() : super(false) {
+    _loadSetting();
+  }
+
+  /// Load the TTS save-to-volume setting from SharedPreferences
+  Future<void> _loadSetting() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final saveToVolume = prefs.getBool(SettingsKeys.ttsSaveToVolume) ?? false;
+      state = saveToVolume;
+    } catch (e) {
+      state = false;
+    }
+  }
+
+  /// Toggle TTS save-to-volume setting
+  Future<void> toggleSaveToVolume() async {
+    await setSaveToVolume(!state);
+  }
+
+  /// Set TTS save-to-volume setting
+  Future<void> setSaveToVolume(bool enabled) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(SettingsKeys.ttsSaveToVolume, enabled);
+      state = enabled;
+    } catch (e) {
+      // If saving fails, state doesn't change
+    }
+  }
+}
+
 /// Extension for easy access to TTS settings
 extension TtsSettingsRef on WidgetRef {
   /// Get the current TTS provider
@@ -259,4 +355,16 @@ extension TtsSettingsRef on WidgetRef {
 
   /// Get the eager mode notifier
   EagerModeNotifier get eagerModeNotifier => read(eagerModeProvider.notifier);
+
+  /// Get the current voice shortcut
+  VoiceShortcut get voiceShortcut => watch(voiceShortcutProvider);
+
+  /// Get the voice shortcut notifier
+  VoiceShortcutNotifier get voiceShortcutNotifier => read(voiceShortcutProvider.notifier);
+
+  /// Get the current TTS save-to-volume setting
+  bool get ttsSaveToVolume => watch(ttsSaveToVolumeProvider);
+
+  /// Get the TTS save-to-volume notifier
+  TtsSaveToVolumeNotifier get ttsSaveToVolumeNotifier => read(ttsSaveToVolumeProvider.notifier);
 }
