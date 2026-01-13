@@ -7,7 +7,7 @@ description: Use when deploying BrickChat to Databricks Apps, updating an existi
 
 ## First: Gather Required Information
 
-**Before proceeding, ask the user these questions using `AskUserQuestion`:**
+**Before proceeding, always ask the user these questions using `AskUserQuestion`:**
 
 1. **App Name**: "What is the name of your Databricks App?" (Default: `brickchat`)
 2. **Databricks Profile**: "Which Databricks CLI profile should be used?" (e.g., `DEFAULT`, `9cefok`, or other configured profile)

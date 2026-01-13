@@ -72,7 +72,7 @@ def clean_text_for_tts(text: str) -> str:
 Clean up and remove all footnotes, references, HTML tags, markdown formatting, and any reasoning/thinking process text.
 Focus only on the actual informational content that should be spoken aloud.
 Don't change the core subject or meaning, just make it natural for text-to-speech.
-Return only the cleaned text without any explanation.
+Return only the cleaned text without any explanation. Ensure that you properly split the sentences with periods and punctuations.
 
 Text to clean:
 {}""".format(text)
@@ -249,6 +249,7 @@ async def text_to_speech_stream(request: dict, user: UserContext = Depends(get_c
 
                     if sentence.strip():
                         sentences_processed += 1
+                        logger.debug(f"Processing sentence {sentences_processed}: {sentence[:50]}...")
 
                         # 4. Send sentence to Deepgram streaming TTS
                         try:

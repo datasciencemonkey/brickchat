@@ -51,6 +51,7 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
   bool _isAudioPlaying = false;
   bool _isAudioLoading = false; // Track if TTS is being generated
   bool _isStreamingTts = false; // Track if streaming TTS is active
+  bool _streamingNetworkDone = false; // Track if SSE stream has completed (all chunks received)
   final Map<String, List<int>> _ttsAudioCache = {}; // Cache TTS audio bytes per message ID
   final List<List<int>> _streamingAudioQueue = []; // Queue for streaming audio chunks
   bool _isPlayingFromQueue = false; // Track if we're playing from the queue
@@ -1669,6 +1670,7 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
       _isStreamingTts = true;
       _isAudioLoading = true;
       _currentPlayingMessageId = message.id;
+      _streamingNetworkDone = false; // Reset - network stream not yet complete
     });
 
     // Clear the audio queue
@@ -1748,6 +1750,8 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
         } else if (event['type'] == 'done') {
           sentencesProcessed = event['sentences'] ?? 0;
           _log.info('Streaming TTS complete: $sentencesProcessed sentences');
+          // Mark network streaming as complete - all chunks have been received
+          _streamingNetworkDone = true;
         } else if (event['type'] == 'error') {
           _log.warning('Streaming TTS error: ${event['message']}');
           throw Exception(event['message']);
@@ -1805,6 +1809,7 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
           _isStreamingTts = false;
           _isAudioLoading = false;
           _currentPlayingMessageId = null;
+          _streamingNetworkDone = false;
         });
         ScaffoldMessenger.of(context).clearSnackBars();
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1825,17 +1830,24 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
   /// Play the next audio chunk from the streaming queue
   /// Each chunk is a complete MP3 file (one sentence), so they must be played separately
   void _playNextFromQueue() async {
-    if (_streamingAudioQueue.isEmpty || !mounted) {
-      // Only mark as done if streaming is also complete
-      if (!_isStreamingTts || _streamingAudioQueue.isEmpty) {
+    if (!mounted) return;
+
+    if (_streamingAudioQueue.isEmpty) {
+      // Queue empty - check if network streaming is also done
+      if (_streamingNetworkDone) {
+        // All done - clean up completely
         setState(() {
           _isPlayingFromQueue = false;
           _isAudioPlaying = false;
-          // Only clear message ID if streaming is done and queue is empty
-          if (!_isStreamingTts) {
-            _currentPlayingMessageId = null;
-            _isStreamingTts = false;
-          }
+          _currentPlayingMessageId = null;
+          _isStreamingTts = false;
+        });
+      } else {
+        // Queue empty but network still streaming - wait for more chunks
+        // DON'T set _isStreamingTts = false! The streaming loop will add more chunks.
+        setState(() {
+          _isPlayingFromQueue = false;
+          _isAudioPlaying = false;
         });
       }
       return;
@@ -1880,13 +1892,21 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
         // Check if there are more chunks to play
         if (_streamingAudioQueue.isNotEmpty) {
           _playNextFromQueue();
-        } else {
+        } else if (_streamingNetworkDone) {
+          // Network stream complete AND queue empty - we're done
           setState(() {
             _currentAudio = null;
             _currentPlayingMessageId = null;
             _isAudioPlaying = false;
             _isStreamingTts = false;
             _isPlayingFromQueue = false;
+          });
+        } else {
+          // Queue empty but network still streaming - wait for more chunks
+          // DON'T set _isStreamingTts = false here! That would break the streaming loop.
+          setState(() {
+            _isPlayingFromQueue = false;
+            _isAudioPlaying = false;
           });
         }
       }
@@ -1945,6 +1965,7 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
       _isAudioLoading = false;
       _isStreamingTts = false;
       _isPlayingFromQueue = false;
+      _streamingNetworkDone = false;
     });
   }
 
