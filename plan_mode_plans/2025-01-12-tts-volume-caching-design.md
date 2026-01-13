@@ -50,11 +50,11 @@ User clicks "Play" on message
        |
        v
 Flutter calls POST /api/tts/speak
-  { text, voice, provider, message_id, thread_id }
+  { text, voice, provider, message_id, thread_id, save_to_volume }
        |
        v
 Backend checks: is Volume caching enabled?
-  (DATABRICKS_VOLUME env var present + user authenticated with token)
+  (DATABRICKS_VOLUME env var + user authenticated + save_to_volume=true)
        |
        +-- NO --> Generate audio, stream directly (current behavior)
        |
@@ -75,8 +75,15 @@ Caching is only enabled when ALL of these are true:
 1. `DATABRICKS_VOLUME` environment variable is set
 2. User has a valid access token (`user.is_authenticated == True`)
 3. Request includes `message_id` and `thread_id`
+4. User has enabled "Save TTS to Volume" setting in Flutter app (passed as `save_to_volume` in request)
 
 Otherwise, falls back to direct streaming (current behavior).
+
+### User Setting: Save TTS to Volume
+
+A toggle in Settings UI allows users to opt-in to TTS caching:
+- **Default**: OFF (no caching, works like today)
+- **When ON**: TTS audio is saved to user's Volume folder for faster replay
 
 ## Implementation
 
@@ -134,12 +141,14 @@ async def text_to_speech(request: dict, user: UserContext = Depends(get_current_
     provider = request.get("provider", "replicate")
     message_id = request.get("message_id")
     thread_id = request.get("thread_id")
+    save_to_volume = request.get("save_to_volume", False)
 
     # Check if caching is possible
     can_cache = (
         is_caching_enabled(user) and
         message_id and
-        thread_id
+        thread_id and
+        save_to_volume
     )
 
     if can_cache:
@@ -193,7 +202,73 @@ async def text_to_speech(request: dict, user: UserContext = Depends(get_current_
 
 ### Flutter Changes
 
-#### 1. Update `FastApiService.requestTts()` (`lib/core/services/fastapi_service.dart`)
+#### 1. New Setting Provider (`lib/features/settings/providers/settings_provider.dart`)
+
+```dart
+/// Provider for TTS Volume caching setting
+final ttsSaveToVolumeProvider = StateNotifierProvider<TtsSaveToVolumeNotifier, bool>((ref) {
+  return TtsSaveToVolumeNotifier();
+});
+
+// Add to SettingsKeys class:
+static const String ttsSaveToVolume = 'tts_save_to_volume';
+
+/// TTS save to volume setting notifier
+class TtsSaveToVolumeNotifier extends StateNotifier<bool> {
+  TtsSaveToVolumeNotifier() : super(false) {
+    _loadSetting();
+  }
+
+  Future<void> _loadSetting() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final saveToVolume = prefs.getBool(SettingsKeys.ttsSaveToVolume) ?? false;
+      state = saveToVolume;
+    } catch (e) {
+      state = false;
+    }
+  }
+
+  Future<void> toggleSaveToVolume() async {
+    await setSaveToVolume(!state);
+  }
+
+  Future<void> setSaveToVolume(bool enabled) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(SettingsKeys.ttsSaveToVolume, enabled);
+      state = enabled;
+    } catch (e) {
+      // If saving fails, state doesn't change
+    }
+  }
+}
+
+// Add to TtsSettingsRef extension:
+bool get ttsSaveToVolume => watch(ttsSaveToVolumeProvider);
+TtsSaveToVolumeNotifier get ttsSaveToVolumeNotifier => read(ttsSaveToVolumeProvider.notifier);
+```
+
+#### 2. Settings UI Toggle (`lib/features/settings/presentation/settings_page.dart`)
+
+Add a switch in the TTS Settings section:
+
+```dart
+Widget _buildTtsSaveToVolumeSwitch() {
+  final saveToVolume = ref.watch(ttsSaveToVolumeProvider);
+
+  return SwitchListTile(
+    title: Text('Save TTS to Volume'),
+    subtitle: Text('Cache audio files for faster replay'),
+    value: saveToVolume,
+    onChanged: (value) {
+      ref.read(ttsSaveToVolumeProvider.notifier).setSaveToVolume(value);
+    },
+  );
+}
+```
+
+#### 3. Update `FastApiService.requestTts()` (`lib/core/services/fastapi_service.dart`)
 
 ```dart
 static Future<http.Response> requestTts(
@@ -202,6 +277,7 @@ static Future<http.Response> requestTts(
   String? voice,
   String? messageId,
   String? threadId,
+  bool saveToVolume = false,
 }) async {
   try {
     final url = Uri.parse('$baseUrl/api/tts/speak');
@@ -211,6 +287,7 @@ static Future<http.Response> requestTts(
       if (voice != null) 'voice': voice,
       if (messageId != null) 'message_id': messageId,
       if (threadId != null) 'thread_id': threadId,
+      'save_to_volume': saveToVolume,
     };
 
     final response = await http.post(
@@ -225,16 +302,18 @@ static Future<http.Response> requestTts(
 }
 ```
 
-#### 2. Update TTS Call Site (`lib/features/chat/presentation/chat_home_page.dart`)
+#### 4. Update TTS Call Site (`lib/features/chat/presentation/chat_home_page.dart`)
 
-Pass message context when requesting TTS:
+Pass message context and save setting when requesting TTS:
 
 ```dart
+final saveToVolume = ref.read(ttsSaveToVolumeProvider);
 final response = await FastApiService.requestTts(
   messageText,
   voice: ttsVoice,
   messageId: message.id,
   threadId: currentThreadId,
+  saveToVolume: saveToVolume,
 );
 ```
 
@@ -268,5 +347,7 @@ final response = await FastApiService.requestTts(
 | `backend/routers/tts.py` | Add caching logic to `/speak` endpoint |
 | `deployment/database.py` | Port database changes |
 | `deployment/routers/tts.py` | Port TTS router changes |
-| `lib/core/services/fastapi_service.dart` | Add `messageId` and `threadId` params to `requestTts()` |
-| `lib/features/chat/presentation/chat_home_page.dart` | Pass message context to TTS requests |
+| `lib/features/settings/providers/settings_provider.dart` | Add `ttsSaveToVolumeProvider` and `TtsSaveToVolumeNotifier` |
+| `lib/features/settings/presentation/settings_page.dart` | Add "Save TTS to Volume" toggle switch |
+| `lib/core/services/fastapi_service.dart` | Add `messageId`, `threadId`, and `saveToVolume` params to `requestTts()` |
+| `lib/features/chat/presentation/chat_home_page.dart` | Pass message context and save setting to TTS requests |
