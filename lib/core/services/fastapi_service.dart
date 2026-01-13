@@ -205,6 +205,87 @@ class FastApiService {
     }
   }
 
+  /// Stream TTS audio chunks via SSE (for eager mode)
+  /// Returns a stream of events containing audio chunks or control messages
+  ///
+  /// Event types:
+  /// - {'type': 'audio', 'chunk': List<int>} - Base64-decoded audio chunk
+  /// - {'type': 'done', 'sentences': int} - Streaming complete
+  /// - {'type': 'error', 'message': String} - Error occurred
+  static Stream<Map<String, dynamic>> streamTts(
+    String text, {
+    String? voice,
+  }) async* {
+    try {
+      final url = Uri.parse('$baseUrl/api/tts/speak-stream');
+
+      final request = http.Request('POST', url);
+      request.headers['Content-Type'] = 'application/json';
+      request.body = json.encode({
+        'text': text,
+        if (voice != null) 'voice': voice,
+      });
+
+      final streamedResponse = await request.send();
+
+      if (streamedResponse.statusCode == 200) {
+        String buffer = '';
+
+        await for (final chunk in streamedResponse.stream.transform(utf8.decoder)) {
+          buffer += chunk;
+
+          // Process complete SSE messages (lines ending with \n\n)
+          while (buffer.contains('\n\n')) {
+            final endIndex = buffer.indexOf('\n\n');
+            final message = buffer.substring(0, endIndex);
+            buffer = buffer.substring(endIndex + 2);
+
+            // Parse each line in the message
+            for (final line in message.split('\n')) {
+              if (line.startsWith('data: ')) {
+                try {
+                  final jsonStr = line.substring(6); // Remove 'data: '
+                  final data = json.decode(jsonStr);
+
+                  if (data['type'] == 'audio' && data['chunk'] != null) {
+                    // Decode base64 audio chunk
+                    final audioBytes = base64Decode(data['chunk']);
+                    yield {'type': 'audio', 'chunk': audioBytes};
+                  } else if (data['type'] == 'done') {
+                    yield {
+                      'type': 'done',
+                      'sentences': data['sentences'] ?? 0,
+                    };
+                    return;
+                  } else if (data['type'] == 'error') {
+                    yield {
+                      'type': 'error',
+                      'message': data['message'] ?? 'Unknown error',
+                    };
+                    return;
+                  }
+                } catch (e) {
+                  // Skip malformed chunks
+                  continue;
+                }
+              }
+            }
+          }
+        }
+      } else {
+        yield {
+          'type': 'error',
+          'message': 'Streaming TTS failed: ${streamedResponse.statusCode}',
+        };
+      }
+    } catch (e) {
+      yield {
+        'type': 'error',
+        'message': 'Error connecting to streaming TTS: $e',
+      };
+    }
+  }
+
   /// Update feedback (like/dislike) for a message
   /// User identity now comes from auth context on the backend
   static Future<Map<String, dynamic>> updateFeedback({

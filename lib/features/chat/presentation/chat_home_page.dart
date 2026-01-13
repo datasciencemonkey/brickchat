@@ -50,7 +50,10 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
   String? _currentPlayingMessageId;
   bool _isAudioPlaying = false;
   bool _isAudioLoading = false; // Track if TTS is being generated
+  bool _isStreamingTts = false; // Track if streaming TTS is active
   final Map<String, List<int>> _ttsAudioCache = {}; // Cache TTS audio bytes per message ID
+  final List<List<int>> _streamingAudioQueue = []; // Queue for streaming audio chunks
+  bool _isPlayingFromQueue = false; // Track if we're playing from the queue
 
   // SidebarX controller
   late SidebarXController _sidebarController;
@@ -438,10 +441,11 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
             // Auto-trigger TTS if eager mode is enabled (after streaming completes)
             final eagerMode = ref.read(eagerModeProvider);
             if (eagerMode && responseBuffer.isNotEmpty) {
-              // Wait a brief moment for UI to settle, then play TTS
+              // Wait a brief moment for UI to settle, then play streaming TTS
               Future.delayed(const Duration(milliseconds: 300), () {
                 if (mounted && messageIndex != -1) {
-                  _playTextToSpeech(_messages[messageIndex]);
+                  // Use streaming TTS for eager mode (lower latency)
+                  _playStreamingTts(_messages[messageIndex]);
                 }
               });
             }
@@ -1823,6 +1827,253 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
     }
   }
 
+  /// Play TTS using streaming pipeline (for eager mode)
+  /// Streams audio chunks from backend and plays them sequentially
+  void _playStreamingTts(ChatMessage message) async {
+    if (!mounted) return;
+
+    // Don't play TTS if message is still streaming
+    if (message.isStreaming) {
+      return;
+    }
+
+    // Stop any currently playing audio
+    _stopAudio();
+
+    // Set streaming state
+    setState(() {
+      _isStreamingTts = true;
+      _isAudioLoading = true;
+      _currentPlayingMessageId = message.id;
+    });
+
+    // Clear the audio queue
+    _streamingAudioQueue.clear();
+
+    try {
+      _log.info('Starting streaming TTS for message: ${message.id}');
+
+      // Get TTS voice setting (must be Deepgram voice for streaming)
+      final ttsVoice = ref.read(ttsVoiceProvider);
+      final streamingVoice = ttsVoice.startsWith('aura-') ? ttsVoice : 'aura-2-thalia-en';
+
+      // Show streaming indicator
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    'Streaming audio...',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.white,
+                    ),
+                    softWrap: true,
+                  ),
+                ),
+              ],
+            ),
+            duration: Duration(seconds: 10),
+            backgroundColor: Colors.blue.withValues(alpha: 0.85),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppConstants.snackBarRadius),
+            ),
+            elevation: 4,
+            width: MediaQuery.of(context).size.width * AppConstants.snackBarWidthFactor,
+          ),
+        );
+      }
+
+      // Collect all audio chunks for sequential playback
+      final allAudioBytes = <int>[];
+      int sentencesProcessed = 0;
+
+      await for (final event in FastApiService.streamTts(
+        message.text,
+        voice: streamingVoice,
+      )) {
+        if (!mounted || !_isStreamingTts) break;
+
+        if (event['type'] == 'audio' && event['chunk'] != null) {
+          final chunk = event['chunk'] as List<int>;
+          allAudioBytes.addAll(chunk);
+          _streamingAudioQueue.add(chunk);
+
+          // Start playing as soon as we have the first chunk
+          if (!_isPlayingFromQueue && _streamingAudioQueue.isNotEmpty) {
+            setState(() {
+              _isAudioLoading = false;
+            });
+            // Start playing the accumulated audio
+            _playNextFromQueue();
+          }
+        } else if (event['type'] == 'done') {
+          sentencesProcessed = event['sentences'] ?? 0;
+          _log.info('Streaming TTS complete: $sentencesProcessed sentences');
+        } else if (event['type'] == 'error') {
+          _log.warning('Streaming TTS error: ${event['message']}');
+          throw Exception(event['message']);
+        }
+      }
+
+      // Cache the complete audio for download
+      if (allAudioBytes.isNotEmpty) {
+        _ttsAudioCache[message.id] = allAudioBytes;
+      }
+
+      // Clear snackbar and show success
+      if (mounted) {
+        ScaffoldMessenger.of(context).clearSnackBars();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.volume_up,
+                  size: 14,
+                  color: Colors.white,
+                ),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    'Playing audio ($sentencesProcessed sentences)',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.white,
+                    ),
+                    softWrap: true,
+                  ),
+                ),
+              ],
+            ),
+            duration: AppConstants.snackBarShortDuration,
+            backgroundColor: Colors.green.withValues(alpha: 0.85),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppConstants.snackBarRadius),
+            ),
+            elevation: 4,
+            width: MediaQuery.of(context).size.width * AppConstants.snackBarWidthFactor,
+          ),
+        );
+      }
+
+    } catch (e) {
+      _log.severe('Streaming TTS error: $e');
+      if (mounted) {
+        setState(() {
+          _isStreamingTts = false;
+          _isAudioLoading = false;
+          _currentPlayingMessageId = null;
+        });
+        ScaffoldMessenger.of(context).clearSnackBars();
+
+        // Fall back to non-streaming TTS
+        _log.info('Falling back to non-streaming TTS');
+        _playTextToSpeech(message);
+      }
+    }
+  }
+
+  /// Play the next audio chunk from the streaming queue
+  void _playNextFromQueue() async {
+    if (_streamingAudioQueue.isEmpty || !mounted) {
+      setState(() {
+        _isPlayingFromQueue = false;
+        _isStreamingTts = false;
+        _isAudioPlaying = false;
+        _currentPlayingMessageId = null;
+      });
+      return;
+    }
+
+    _isPlayingFromQueue = true;
+
+    // Combine all queued chunks into one audio blob for smoother playback
+    final combinedBytes = <int>[];
+    while (_streamingAudioQueue.isNotEmpty) {
+      combinedBytes.addAll(_streamingAudioQueue.removeAt(0));
+    }
+
+    if (combinedBytes.isEmpty) {
+      _isPlayingFromQueue = false;
+      return;
+    }
+
+    try {
+      // Play the combined audio
+      await _playAudioBytesWeb(combinedBytes);
+    } catch (e) {
+      _log.warning('Error playing audio chunk: $e');
+    }
+  }
+
+  /// Play audio bytes on web platform (helper for streaming)
+  Future<void> _playAudioBytesWeb(List<int> audioBytes) async {
+    if (!kIsWeb) return;
+
+    // Convert bytes to base64
+    final base64Audio = base64Encode(audioBytes);
+    final dataUrl = 'data:audio/mpeg;base64,$base64Audio';
+
+    // Create audio element
+    final audio = Audio(dataUrl);
+
+    // Set up ended handler to check for more chunks
+    audio.onended = ((JSAny? event) {
+      if (mounted) {
+        // Check if there are more chunks to play
+        if (_streamingAudioQueue.isNotEmpty) {
+          _playNextFromQueue();
+        } else {
+          setState(() {
+            _currentAudio = null;
+            _currentPlayingMessageId = null;
+            _isAudioPlaying = false;
+            _isStreamingTts = false;
+            _isPlayingFromQueue = false;
+          });
+        }
+      }
+    }).toJS;
+
+    audio.onerror = ((JSAny? error) {
+      _log.warning('Streaming audio error: $error');
+    }).toJS;
+
+    // Store reference and play
+    _currentAudio = audio;
+    setState(() {
+      _isAudioPlaying = true;
+    });
+
+    audio.load();
+    await Future.delayed(Duration(milliseconds: 50));
+
+    try {
+      await audio.play().toDart;
+    } catch (e) {
+      _log.warning('Audio play error: $e');
+      rethrow;
+    }
+  }
+
   void _pauseAudio() {
     if (_currentAudio != null && kIsWeb) {
       _currentAudio!.pause();
@@ -1846,12 +2097,16 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
       _currentAudio!.pause();
       _currentAudio!.currentTime = 0.0;
       _currentAudio = null;
-      setState(() {
-        _currentPlayingMessageId = null;
-        _isAudioPlaying = false;
-        _isAudioLoading = false;
-      });
     }
+    // Clear streaming state
+    _streamingAudioQueue.clear();
+    setState(() {
+      _currentPlayingMessageId = null;
+      _isAudioPlaying = false;
+      _isAudioLoading = false;
+      _isStreamingTts = false;
+      _isPlayingFromQueue = false;
+    });
   }
 
   void _downloadTtsAudio(String messageId) {

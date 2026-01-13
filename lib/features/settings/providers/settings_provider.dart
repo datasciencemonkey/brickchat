@@ -138,7 +138,7 @@ class DeepgramVoices {
 
 /// Stream results setting notifier
 class StreamResultsNotifier extends StateNotifier<bool> {
-  StreamResultsNotifier() : super(false) {
+  StreamResultsNotifier() : super(true) {
     _loadSetting();
   }
 
@@ -146,11 +146,11 @@ class StreamResultsNotifier extends StateNotifier<bool> {
   Future<void> _loadSetting() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final streamResults = prefs.getBool(SettingsKeys.streamResults) ?? false;
+      final streamResults = prefs.getBool(SettingsKeys.streamResults) ?? true;
       state = streamResults;
     } catch (e) {
-      // If there's an error loading, default to false (non-streaming)
-      state = false;
+      // If there's an error loading, default to true (streaming enabled)
+      state = true;
     }
   }
 
@@ -174,7 +174,7 @@ class StreamResultsNotifier extends StateNotifier<bool> {
 
 /// TTS provider setting notifier
 class TtsProviderNotifier extends StateNotifier<String> {
-  TtsProviderNotifier() : super(TtsProvider.replicate.value) {
+  TtsProviderNotifier() : super(TtsProvider.deepgram.value) {
     _loadSetting();
   }
 
@@ -182,10 +182,10 @@ class TtsProviderNotifier extends StateNotifier<String> {
   Future<void> _loadSetting() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final provider = prefs.getString(SettingsKeys.ttsProvider) ?? TtsProvider.replicate.value;
+      final provider = prefs.getString(SettingsKeys.ttsProvider) ?? TtsProvider.deepgram.value;
       state = provider;
     } catch (e) {
-      state = TtsProvider.replicate.value;
+      state = TtsProvider.deepgram.value;
     }
   }
 
@@ -203,7 +203,7 @@ class TtsProviderNotifier extends StateNotifier<String> {
 
 /// TTS voice setting notifier
 class TtsVoiceNotifier extends StateNotifier<String> {
-  TtsVoiceNotifier() : super('af_bella') {
+  TtsVoiceNotifier() : super('aura-2-thalia-en') {
     _loadSetting();
   }
 
@@ -211,10 +211,10 @@ class TtsVoiceNotifier extends StateNotifier<String> {
   Future<void> _loadSetting() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final voice = prefs.getString(SettingsKeys.ttsVoice) ?? 'af_bella';
+      final voice = prefs.getString(SettingsKeys.ttsVoice) ?? 'aura-2-thalia-en';
       state = voice;
     } catch (e) {
-      state = 'af_bella';
+      state = 'aura-2-thalia-en';
     }
   }
 
