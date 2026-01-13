@@ -86,6 +86,12 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
     super.dispose();
   }
 
+  void _toggleVoiceInput() {
+    setState(() {
+      _showSpeechToText = !_showSpeechToText;
+    });
+  }
+
   void _loadInitialMessages() {
     setState(() {
       _messages.addAll([
@@ -705,46 +711,59 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Row(
-        children: [
-          SidebarX(
-            controller: _sidebarController,
-            theme: _buildSidebarTheme(context),
-            extendedTheme: _buildExtendedSidebarTheme(context),
-            headerBuilder: (context, extended) => _buildSidebarHeader(extended),
-            items: _buildSidebarItems(),
-            footerDivider: Divider(color: context.appColors.sidebarBorder, height: 1),
-            headerDivider: Divider(color: context.appColors.sidebarBorder, height: 1),
-          ),
-          Expanded(
-            child: Column(
-              children: [
-                AppBar(
-                  title: Image.asset(
-                    ref.isDarkMode
-                        ? AppColors.darkLogo
-                        : AppColors.lightLogo,
-                    height: 30,
-                    fit: BoxFit.contain,
-                  ),
-                  centerTitle: false,
-                  actions: [
-                    IconButton(
-                      onPressed: _createNewThread,
-                      icon: const Icon(Icons.add),
-                      tooltip: 'New conversation',
+    final voiceShortcut = ref.watch(voiceShortcutProvider);
+
+    return CallbackShortcuts(
+      bindings: {
+        SingleActivator(
+          voiceShortcut.logicalKey,
+          alt: true,
+        ): _toggleVoiceInput,
+      },
+      child: Focus(
+        autofocus: true,
+        child: Scaffold(
+          body: Row(
+            children: [
+              SidebarX(
+                controller: _sidebarController,
+                theme: _buildSidebarTheme(context),
+                extendedTheme: _buildExtendedSidebarTheme(context),
+                headerBuilder: (context, extended) => _buildSidebarHeader(extended),
+                items: _buildSidebarItems(),
+                footerDivider: Divider(color: context.appColors.sidebarBorder, height: 1),
+                headerDivider: Divider(color: context.appColors.sidebarBorder, height: 1),
+              ),
+              Expanded(
+                child: Column(
+                  children: [
+                    AppBar(
+                      title: Image.asset(
+                        ref.isDarkMode
+                            ? AppColors.darkLogo
+                            : AppColors.lightLogo,
+                        height: 30,
+                        fit: BoxFit.contain,
+                      ),
+                      centerTitle: false,
+                      actions: [
+                        IconButton(
+                          onPressed: _createNewThread,
+                          icon: const Icon(Icons.add),
+                          tooltip: 'New conversation',
+                        ),
+                        const ThemeToggle(),
+                        const SizedBox(width: AppConstants.spacingSm),
+                      ],
                     ),
-                    const ThemeToggle(),
-                    const SizedBox(width: AppConstants.spacingSm),
+                    Divider(color: context.appColors.sidebarBorder, height: 1),
+                    Expanded(child: _buildChatBody()),
                   ],
                 ),
-                Divider(color: context.appColors.sidebarBorder, height: 1),
-                Expanded(child: _buildChatBody()),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -1573,19 +1592,22 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
               const SizedBox(width: AppConstants.spacingSm),
 
               // Microphone button
-              IconButton(
-                onPressed: () {
-                  setState(() {
-                    _showSpeechToText = !_showSpeechToText;
-                  });
+              Builder(
+                builder: (context) {
+                  final shortcut = ref.watch(voiceShortcutProvider);
+                  return IconButton(
+                    onPressed: _toggleVoiceInput,
+                    icon: Icon(
+                      _showSpeechToText ? Icons.keyboard : Icons.mic,
+                      color: _showSpeechToText
+                        ? Theme.of(context).colorScheme.primary
+                        : null,
+                    ),
+                    tooltip: _showSpeechToText
+                        ? 'Hide voice input (${shortcut.displayName})'
+                        : 'Voice input (${shortcut.displayName})',
+                  );
                 },
-                icon: Icon(
-                  _showSpeechToText ? Icons.keyboard : Icons.mic,
-                  color: _showSpeechToText
-                    ? Theme.of(context).colorScheme.primary
-                    : null,
-                ),
-                tooltip: _showSpeechToText ? 'Hide voice input' : 'Voice input',
               ),
 
               const SizedBox(width: AppConstants.spacingXs),
@@ -1709,12 +1731,15 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
       // Get TTS settings
       final ttsProvider = ref.read(ttsProviderProvider);
       final ttsVoice = ref.read(ttsVoiceProvider);
+      final ttsSaveToVolume = ref.read(ttsSaveToVolumeProvider);
 
       // Call backend TTS API with cleaned text
       final response = await FastApiService.requestTts(
         textToSend,  // Send raw text - backend will clean it using LLM
         provider: ttsProvider,
         voice: ttsVoice,
+        messageId: message.id,
+        saveToVolume: ttsSaveToVolume,
       );
 
       if (response.statusCode == 200 && mounted) {
