@@ -1,11 +1,29 @@
 """Database connection and utilities for BrickChat feedback system"""
 import os
-from typing import  Dict, List
+from typing import Dict, List, Optional
 from psycopg2.extras import RealDictCursor, Json
 from psycopg2.pool import SimpleConnectionPool
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def normalize_unicode(text: Optional[str]) -> str:
+    """
+    Normalize Unicode ligatures and special characters.
+    Applied at write-time to avoid repeated processing on reads.
+
+    Handles:
+    - \ufb01 (fi ligature) -> 'fi'
+    - \ufb02 (fl ligature) -> 'fl'
+    - \u25cf (black circle) -> '•' (bullet)
+    """
+    if not text:
+        return ''
+    return (text
+        .replace('\ufb01', 'fi')
+        .replace('\ufb02', 'fl')
+        .replace('\u25cf', '•'))
 
 class DatabaseManager:
     """Manages PostgreSQL database connections and operations"""
@@ -146,7 +164,10 @@ class ChatDatabase:
                     message_content: str,
                     agent_endpoint: str = None,
                     metadata: Dict = None) -> str:
-        """Save a chat message"""
+        """Save a chat message with Unicode normalization applied at write-time"""
+        # Normalize Unicode at write-time to avoid repeated processing on reads
+        normalized_content = normalize_unicode(message_content)
+
         query = """
             INSERT INTO chat_messages (thread_id, user_id, message_role, message_content, agent_endpoint, metadata)
             VALUES (%s, %s, %s, %s, %s, %s)
@@ -154,7 +175,7 @@ class ChatDatabase:
         """
         result = self.db.execute_query_one(
             query,
-            (thread_id, user_id, message_role, message_content, agent_endpoint, Json(metadata or {}))
+            (thread_id, user_id, message_role, normalized_content, agent_endpoint, Json(metadata or {}))
         )
         logger.info(f"Saved message {result['message_id']} in thread {thread_id}")
         return str(result['message_id'])
@@ -200,8 +221,23 @@ class ChatDatabase:
             "updated_at": result['updated_at'].isoformat()
         }
 
-    def get_thread_messages(self, thread_id: str) -> List[Dict]:
-        """Get all messages in a thread"""
+    def get_thread_messages(
+        self,
+        thread_id: str,
+        limit: int = None,
+        offset: int = 0
+    ) -> List[Dict]:
+        """
+        Get messages in a thread with optional pagination.
+
+        Args:
+            thread_id: The thread UUID
+            limit: Maximum number of messages to return (None = all messages, backward compatible)
+            offset: Number of messages to skip (default 0)
+
+        Returns:
+            List of message dictionaries ordered by created_at ASC
+        """
         query = """
             SELECT
                 m.message_id,
@@ -217,12 +253,19 @@ class ChatDatabase:
             WHERE m.thread_id = %s
             ORDER BY m.created_at ASC
         """
+
+        # Add pagination if limit is specified
+        if limit is not None:
+            query += f" LIMIT {int(limit)} OFFSET {int(offset)}"
+
         results = self.db.execute_query(query, (thread_id,))
         return [{
             "message_id": str(r['message_id']),
             "user_id": r['user_id'],
             "message_role": r['message_role'],  # Changed from "role" to match Flutter code
-            "message_content": r['message_content'].replace('\ufb01', 'fi').replace('\ufb02', 'fl').replace('\u25cf', '•') if r['message_content'] else '',  # Clean up Unicode ligatures
+            # Note: Unicode normalization now happens at write-time in save_message()
+            # This normalize_unicode call handles legacy messages that weren't normalized
+            "message_content": normalize_unicode(r['message_content']),
             "agent_endpoint": r['agent_endpoint'],
             "created_at": r['created_at'].isoformat(),
             "metadata": r['metadata'],
@@ -250,6 +293,31 @@ class ChatDatabase:
             "dislike_count": r['dislike_count'],
             "total_feedback": r['total_feedback']
         } for r in results]
+
+
+    def update_message_tts_cache(self, message_id: str, tts_cache: Dict) -> bool:
+        """Update message metadata with TTS cache info"""
+        query = """
+            UPDATE chat_messages
+            SET metadata = COALESCE(metadata, '{}'::jsonb) || %s
+            WHERE message_id = %s
+            RETURNING message_id
+        """
+        result = self.db.execute_query_one(
+            query,
+            (Json({"tts_cache": tts_cache}), message_id)
+        )
+        return result is not None
+
+    def get_message_tts_cache(self, message_id: str, user_id: str) -> Optional[Dict]:
+        """Get TTS cache info for a message, verifying user ownership"""
+        query = """
+            SELECT metadata->'tts_cache' as tts_cache
+            FROM chat_messages
+            WHERE message_id = %s AND user_id = %s
+        """
+        result = self.db.execute_query_one(query, (message_id, user_id))
+        return result['tts_cache'] if result and result.get('tts_cache') else None
 
     def initialize_schema(self):
         """Initialize database schema"""
