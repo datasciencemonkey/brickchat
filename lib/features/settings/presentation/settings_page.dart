@@ -44,6 +44,22 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
             const SizedBox(height: 20),
 
+            // Keyboard Shortcuts Section
+            _buildModernCard(
+              context,
+              icon: Icons.keyboard_outlined,
+              title: 'Keyboard Shortcuts',
+              subtitle: 'Configure keyboard shortcuts',
+              child: Column(
+                children: [
+                  const SizedBox(height: 16),
+                  _buildVoiceShortcutDropdown(),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
             // Text-to-Speech Settings Section
             _buildModernCard(
               context,
@@ -56,6 +72,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   _buildTtsProviderDropdown(),
                   const SizedBox(height: 16),
                   _buildTtsVoiceDropdown(),
+                  const SizedBox(height: 16),
+                  _buildTtsSaveToVolumeToggle(),
                 ],
               ),
             ),
@@ -369,6 +387,47 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     );
   }
 
+  Widget _buildTtsSaveToVolumeToggle() {
+    final theme = Theme.of(context);
+    final appColors = context.appColors;
+    final saveToVolume = ref.ttsSaveToVolume;
+
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Cache TTS audio',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                saveToVolume
+                    ? 'Audio cached to cloud for faster playback'
+                    : 'Audio generated fresh each time',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: appColors.mutedForeground,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 16),
+        Switch(
+          value: saveToVolume,
+          onChanged: (value) {
+            ref.ttsSaveToVolumeNotifier.setSaveToVolume(value);
+          },
+          activeTrackColor: theme.colorScheme.primary,
+        ),
+      ],
+    );
+  }
+
   Widget _buildInfoItem(String title, String value) {
     final theme = Theme.of(context);
     final appColors = context.appColors;
@@ -397,6 +456,57 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildVoiceShortcutDropdown() {
+    final theme = Theme.of(context);
+    final appColors = context.appColors;
+    final currentShortcut = ref.voiceShortcut;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Voice Input Shortcut',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          decoration: BoxDecoration(
+            border: Border.all(
+              color: appColors.input.withValues(alpha: 0.5),
+            ),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: DropdownButton<VoiceShortcut>(
+            value: currentShortcut,
+            isExpanded: true,
+            underline: const SizedBox(),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            items: VoiceShortcut.values.map((shortcut) {
+              return DropdownMenuItem<VoiceShortcut>(
+                value: shortcut,
+                child: Text(shortcut.displayName),
+              );
+            }).toList(),
+            onChanged: (value) {
+              if (value != null) {
+                ref.voiceShortcutNotifier.setShortcut(value);
+              }
+            },
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Toggle voice input mode with this keyboard shortcut',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: appColors.mutedForeground,
+          ),
+        ),
+      ],
     );
   }
 }
