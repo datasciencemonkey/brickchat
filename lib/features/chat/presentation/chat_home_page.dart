@@ -440,11 +440,14 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
 
             // Auto-trigger TTS if eager mode is enabled (after streaming completes)
             final eagerMode = ref.read(eagerModeProvider);
+            _log.info('Eager mode check (streaming): eagerMode=$eagerMode, bufferNotEmpty=${responseBuffer.isNotEmpty}');
             if (eagerMode && responseBuffer.isNotEmpty) {
+              _log.info('Triggering eager mode TTS for message: ${_messages[messageIndex].id}');
               // Wait a brief moment for UI to settle, then play streaming TTS
               Future.delayed(const Duration(milliseconds: 300), () {
                 if (mounted && messageIndex != -1) {
                   // Use streaming TTS for eager mode (lower latency)
+                  _log.info('Executing eager mode TTS playback');
                   _playStreamingTts(_messages[messageIndex]);
                 }
               });
@@ -527,10 +530,13 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
 
             // Auto-trigger TTS if eager mode is enabled
             final eagerMode = ref.read(eagerModeProvider);
+            _log.info('Eager mode check (non-streaming): eagerMode=$eagerMode');
             if (eagerMode) {
+              _log.info('Triggering eager mode TTS for message: ${assistantMessage.id}');
               // Wait a brief moment for UI to settle, then play streaming TTS
               Future.delayed(const Duration(milliseconds: 300), () {
                 if (mounted) {
+                  _log.info('Executing eager mode TTS playback (non-streaming path)');
                   _playStreamingTts(assistantMessage);
                 }
               });
@@ -1817,35 +1823,43 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
   }
 
   /// Play the next audio chunk from the streaming queue
+  /// Each chunk is a complete MP3 file (one sentence), so they must be played separately
   void _playNextFromQueue() async {
     if (_streamingAudioQueue.isEmpty || !mounted) {
-      setState(() {
-        _isPlayingFromQueue = false;
-        _isStreamingTts = false;
-        _isAudioPlaying = false;
-        _currentPlayingMessageId = null;
-      });
+      // Only mark as done if streaming is also complete
+      if (!_isStreamingTts || _streamingAudioQueue.isEmpty) {
+        setState(() {
+          _isPlayingFromQueue = false;
+          _isAudioPlaying = false;
+          // Only clear message ID if streaming is done and queue is empty
+          if (!_isStreamingTts) {
+            _currentPlayingMessageId = null;
+            _isStreamingTts = false;
+          }
+        });
+      }
       return;
     }
 
     _isPlayingFromQueue = true;
 
-    // Combine all queued chunks into one audio blob for smoother playback
-    final combinedBytes = <int>[];
-    while (_streamingAudioQueue.isNotEmpty) {
-      combinedBytes.addAll(_streamingAudioQueue.removeAt(0));
-    }
+    // Take just ONE chunk (one complete MP3 file per sentence)
+    // DO NOT combine chunks - each is a separate MP3 with its own headers
+    final audioBytes = _streamingAudioQueue.removeAt(0);
 
-    if (combinedBytes.isEmpty) {
-      _isPlayingFromQueue = false;
+    if (audioBytes.isEmpty) {
+      // Try next chunk
+      _playNextFromQueue();
       return;
     }
 
     try {
-      // Play the combined audio
-      await _playAudioBytesWeb(combinedBytes);
+      // Play single sentence audio
+      await _playAudioBytesWeb(audioBytes);
     } catch (e) {
       _log.warning('Error playing audio chunk: $e');
+      // Try to continue with next chunk on error
+      _playNextFromQueue();
     }
   }
 

@@ -101,24 +101,14 @@ DATABRICKS_BASE_URL = os.environ.get('DATABRICKS_BASE_URL', '')
 DATABRICKS_MODEL = os.environ.get('DATABRICKS_MODEL')
 
 
-def get_databricks_client(user: UserContext) -> OpenAI:
+def get_databricks_client() -> OpenAI:
     """
     Get an OpenAI client configured for Databricks.
 
-    Uses the user's forwarded access token for on-behalf-of authentication
-    when available (in Databricks Apps), otherwise falls back to the
-    server's DATABRICKS_TOKEN for local development.
+    Always uses the app's DATABRICKS_TOKEN for all API calls.
+    User context (from X-Forwarded headers) is only used for identification,
+    not for authentication to Databricks services.
     """
-    # Use user's token for on-behalf-of calls when authenticated
-    if user.is_authenticated and user.access_token:
-        logger.debug(f"Using user token for {user.user_id}")
-        return OpenAI(
-            api_key=user.access_token,
-            base_url=DATABRICKS_BASE_URL
-        )
-
-    # Fallback to server token for local development
-    logger.debug("Using server token (local development mode)")
     return OpenAI(
         api_key=DATABRICKS_TOKEN,
         base_url=DATABRICKS_BASE_URL
@@ -240,15 +230,15 @@ async def send_message(message: dict, user: UserContext = Depends(get_current_us
             agent_endpoint=None  # User messages don't have agent endpoint
         )
 
-        # Check if we have a valid token (user's token or server token)
-        if not user.is_authenticated and not DATABRICKS_TOKEN:
+        # Check if we have the app's token configured
+        if not DATABRICKS_TOKEN:
             raise HTTPException(
                 status_code=503,
-                detail="No authentication token available. Please set DATABRICKS_TOKEN environment variable for local development."
+                detail="DATABRICKS_TOKEN not configured. Please set DATABRICKS_TOKEN environment variable."
             )
 
-        # Get client with appropriate token (user's on-behalf-of token or server token)
-        client = get_databricks_client(user)
+        # Get client using app's service principal token
+        client = get_databricks_client()
 
         # Prepare the input array for Databricks endpoint
         input_array = []

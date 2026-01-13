@@ -33,8 +33,13 @@ When deployed to Databricks Apps, user authentication is handled automatically v
 - **X-Forwarded-Access-Token**: User's access token for downstream API calls
 
 The `auth.py` module provides:
-- `UserContext` class: Encapsulates user identity and provides `get_workspace_client()` for on-behalf-of Databricks API calls
+- `UserContext` class: Encapsulates user identity (user_id, email, username)
 - `get_current_user()` dependency: Extracts user context from headers, falls back to `dev_user` for local development
+
+**IMPORTANT: User token is for identification only, not for API calls.**
+The user's forwarded access token should NOT be used for Databricks API calls. All API calls (model inference, etc.) use the app's `DATABRICKS_TOKEN`. The user context is only for:
+- Identifying who is making the request (for logging, thread ownership, etc.)
+- Storing user-specific data (chat threads, preferences)
 
 **Usage in routers:**
 ```python
@@ -42,13 +47,11 @@ from auth import get_current_user, UserContext
 
 @router.post("/endpoint")
 async def my_endpoint(user: UserContext = Depends(get_current_user)):
-    # Access user identity
+    # Access user identity for logging/tracking
     print(f"User: {user.user_id}, Email: {user.email}")
 
-    # Make on-behalf-of API calls to Databricks
-    if user.is_authenticated:
-        workspace_client = user.get_workspace_client()
-        # Use workspace_client for Unity Catalog, Volumes, etc.
+    # Use DATABRICKS_TOKEN (app's service principal) for all API calls
+    client = OpenAI(api_key=DATABRICKS_TOKEN, base_url=DATABRICKS_BASE_URL)
 ```
 
 #### Critical Implementation Pattern

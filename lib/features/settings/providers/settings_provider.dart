@@ -250,8 +250,12 @@ class EagerModeNotifier extends StateNotifier<bool> {
     try {
       final prefs = await SharedPreferences.getInstance();
       final eagerMode = prefs.getBool(SettingsKeys.eagerMode) ?? false;
+      // ignore: avoid_print
+      print('[EagerModeNotifier] Loaded eager mode from prefs: $eagerMode');
       state = eagerMode;
     } catch (e) {
+      // ignore: avoid_print
+      print('[EagerModeNotifier] Error loading eager mode: $e');
       state = false;
     }
   }
@@ -266,8 +270,12 @@ class EagerModeNotifier extends StateNotifier<bool> {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(SettingsKeys.eagerMode, enabled);
+      // ignore: avoid_print
+      print('[EagerModeNotifier] Saved eager mode to prefs: $enabled');
       state = enabled;
     } catch (e) {
+      // ignore: avoid_print
+      print('[EagerModeNotifier] Error saving eager mode: $e');
       // If saving fails, state doesn't change
     }
   }

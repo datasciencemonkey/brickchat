@@ -21,7 +21,7 @@ router = APIRouter(prefix="/api/tts", tags=["text-to-speech"])
 logger = logging.getLogger(__name__)
 
 # Get configuration from environment
-DEEPGRAM_API_KEY = os.environ.get('DEEPGRAM_TOKEN', '')
+DEEPGRAM_API_KEY = os.environ.get('DEEPGRAM_API_TOKEN', '')
 
 # Databricks configuration for LLM text cleaning
 DATABRICKS_TOKEN = os.environ.get('DATABRICKS_TOKEN', '')
@@ -72,7 +72,7 @@ def clean_text_for_tts(text: str) -> str:
 Clean up and remove all footnotes, references, HTML tags, markdown formatting, and any reasoning/thinking process text.
 Focus only on the actual informational content that should be spoken aloud.
 Don't change the core subject or meaning, just make it natural for text-to-speech.
-Return only the cleaned text without any explanation.
+Return only the cleaned text without any explanation. Ensure that you properly split the sentences with periods and punctuations.
 
 Text to clean:
 {}""".format(text)
@@ -109,23 +109,29 @@ MIN_SENTENCE_LENGTH = 10
 
 def has_complete_sentence(text: str) -> bool:
     """Check if buffer contains a complete sentence."""
-    # Look for sentence-ending punctuation followed by space or newline
+    # Match sentence-ending punctuation followed by:
+    # - whitespace (original pattern)
+    # - capital letter (LLM output often omits spaces after punctuation)
     # Must have minimum length to avoid splitting on abbreviations
-    pattern = r'[.!?]\s+'
-    match = re.search(pattern, text)
-    if match and match.start() >= MIN_SENTENCE_LENGTH:
-        return True
+    pattern = r'[.!?](?:\s+|(?=[A-Z]))'
+    # Find ALL matches and check if ANY of them are at position >= MIN_SENTENCE_LENGTH
+    for match in re.finditer(pattern, text):
+        if match.start() >= MIN_SENTENCE_LENGTH:
+            return True
     return False
 
 
 def extract_sentence(text: str) -> tuple[str, str]:
-    """Extract first complete sentence from buffer."""
-    # Find sentence boundary (. ! ?) followed by whitespace
-    match = re.search(r'^(.*?[.!?])\s+', text, re.DOTALL)
-    if match:
-        sentence = match.group(1).strip()
-        remaining = text[match.end():].strip()
-        return sentence, remaining
+    """Extract first complete sentence from buffer that meets minimum length."""
+    # Find ALL sentence boundaries and return the first one that's long enough
+    pattern = r'[.!?](?:\s+|(?=[A-Z]))'
+    for match in re.finditer(pattern, text):
+        if match.start() >= MIN_SENTENCE_LENGTH:
+            # Extract everything up to and including the punctuation
+            sentence = text[:match.start() + 1].strip()
+            # Remaining starts after the match (skip whitespace if present)
+            remaining = text[match.end():].strip()
+            return sentence, remaining
     return text, ""
 
 
@@ -164,7 +170,11 @@ Text to clean:
 
 
 async def deepgram_stream_tts(text: str, voice: str) -> AsyncGenerator[bytes, None]:
-    """Stream audio from Deepgram TTS for a sentence."""
+    """Stream audio from Deepgram TTS for a sentence.
+
+    Returns the complete audio for a sentence as a single chunk.
+    This is necessary because MP3 files cannot be split and played separately.
+    """
     if not deepgram:
         logger.error("Deepgram client not configured")
         return
@@ -178,14 +188,14 @@ async def deepgram_stream_tts(text: str, voice: str) -> AsyncGenerator[bytes, No
             options,
         )
 
-        # Read the audio stream and yield it
+        # Read the complete audio for this sentence and yield it as ONE chunk
+        # MP3 files have headers and cannot be split arbitrarily
         if hasattr(response, 'stream') and response.stream:
             audio_data = response.stream.read()
             if audio_data:
-                # Yield in chunks for better streaming
-                chunk_size = 8192  # 8KB chunks
-                for i in range(0, len(audio_data), chunk_size):
-                    yield audio_data[i:i + chunk_size]
+                # Yield the complete sentence audio as a single chunk
+                logger.debug(f"Yielding complete sentence audio: {len(audio_data)} bytes")
+                yield audio_data
         else:
             logger.warning("Deepgram response has no stream attribute")
 
@@ -229,6 +239,9 @@ async def text_to_speech_stream(request: dict, user: UserContext = Depends(get_c
 
             async for cleaned_chunk in stream_clean_text(text):
                 sentence_buffer += cleaned_chunk
+
+                # Strip any <think> tags that appear in the LLM output
+                sentence_buffer = _strip_think_tags(sentence_buffer)
 
                 # 3. Detect sentence boundaries and process complete sentences
                 while has_complete_sentence(sentence_buffer):
