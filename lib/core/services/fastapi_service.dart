@@ -170,13 +170,28 @@ class FastApiService {
   }
 
   /// Request text-to-speech audio from backend
-  static Future<http.Response> requestTts(String text, {String? provider, String? voice}) async {
+  ///
+  /// Parameters:
+  /// - text: The text to convert to speech
+  /// - provider: TTS provider ('replicate' or 'deepgram')
+  /// - voice: Voice ID for the selected provider
+  /// - messageId: Message ID for caching (optional)
+  /// - saveToVolume: Whether to cache audio to Databricks Volume (optional)
+  static Future<http.Response> requestTts(
+    String text, {
+    String? provider,
+    String? voice,
+    String? messageId,
+    bool? saveToVolume,
+  }) async {
     try {
       final url = Uri.parse('$baseUrl/api/tts/speak');
       final requestBody = {
         'text': text,
         if (provider != null) 'provider': provider,
         if (voice != null) 'voice': voice,
+        if (messageId != null) 'message_id': messageId,
+        if (saveToVolume != null) 'save_to_volume': saveToVolume,
       };
 
       final response = await http.post(
