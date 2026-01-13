@@ -1,15 +1,38 @@
 ---
 name: deploying-to-databricks
-description: Use when deploying BrickChat to Databricks Apps, updating an existing deployment, or troubleshooting deployment issues
+description: Use when deploying BrickChat to Databricks Apps, updating an existing deployment, or troubleshooting deployment issues (project)
 ---
 
 # Deploying BrickChat to Databricks Apps
 
-## First: Get the App Name
+## First: Gather Required Information
 
-**Before proceeding, ask the user:** "What is the name of your Databricks App?"
+**Before proceeding, ask the user these questions using `AskUserQuestion`:**
 
-Store their response as `<APP_NAME>` and use it in all commands below. Default: `brickchat`
+1. **App Name**: "What is the name of your Databricks App?" (Default: `brickchat`)
+2. **Databricks Profile**: "Which Databricks CLI profile should be used?" (e.g., `DEFAULT`, `9cefok`, or other configured profile)
+
+Store responses as `<APP_NAME>` and `<PROFILE>` for use in all commands below.
+
+**All `databricks` commands must include `--profile <PROFILE>`.**
+
+## Second: Check if App Exists
+
+**BEFORE any deployment steps, check if the app exists:**
+
+```bash
+databricks apps get <APP_NAME> --profile <PROFILE>
+```
+
+**If the app does NOT exist** (error: "does not exist or is deleted"):
+1. Inform the user: "The app '<APP_NAME>' doesn't exist. I'll create it now."
+2. Create the app:
+   ```bash
+   databricks apps create <APP_NAME> --description "BrickChat - AI Chat Application" --profile <PROFILE>
+   ```
+3. Wait for creation to complete before proceeding
+
+**If the app EXISTS**: Proceed directly to deployment workflow.
 
 ## Overview
 
@@ -27,15 +50,14 @@ Deploy BrickChat (Flutter WASM frontend + FastAPI backend) to Databricks Apps. T
 ```dot
 digraph deployment {
     rankdir=TB;
-    "Update deployment files" -> "Local testing";
-    "Local testing" -> "Passes?" [shape=diamond];
-    "Passes?" -> "App exists?" [label="yes"];
-    "Passes?" -> "Fix issues" [label="no"];
-    "Fix issues" -> "Local testing";
-    "App exists?" -> "Create app" [label="no (first time)"];
-    "App exists?" -> "Deploy to Databricks" [label="yes"];
-    "Create app" -> "Deploy to Databricks";
-    "Deploy to Databricks" -> "Verify deployment";
+    "Gather info (app name, profile)" -> "Check app exists";
+    "Check app exists" -> "App exists?" [shape=diamond];
+    "App exists?" -> "Create app" [label="no"];
+    "App exists?" -> "Update deployment files" [label="yes"];
+    "Create app" -> "Update deployment files";
+    "Update deployment files" -> "Sync to workspace";
+    "Sync to workspace" -> "Deploy from workspace";
+    "Deploy from workspace" -> "Verify deployment";
 }
 ```
 
@@ -98,55 +120,76 @@ Verify at `http://localhost:8000`:
 - Health check: `curl http://localhost:8000/health`
 - Chat functionality works
 
-## Step 4: Create App (First Deployment Only)
+## Step 4: Sync to Databricks Workspace
 
-Create the Databricks App in your workspace:
-
-```bash
-# Create the app (only needed once)
-databricks apps create <APP_NAME> --description "BrickChat - AI Chat Application"
-```
-
-Alternatively, create via the Databricks UI:
-1. Navigate to **Compute** > **Apps** in your workspace
-2. Click **Create App**
-3. Name it `<APP_NAME>` and configure settings
-
-## Step 5: Deploy to Databricks
+**IMPORTANT:** The `databricks apps deploy` command requires a **workspace path**, not a local path. You must sync local files to the workspace first.
 
 ```bash
-# Deploy code to the app
-databricks apps deploy <APP_NAME> --source-code-path ./deployment
+# Sync deployment folder to workspace (use --full for complete sync)
+databricks sync ./deployment /Workspace/Users/<YOUR_EMAIL>/brickchat --profile <PROFILE> --full
 ```
 
-For subsequent updates, just run the deploy command again.
+Replace `<YOUR_EMAIL>` with the user's Databricks email (can be found from `databricks apps get` output under `creator` field).
+
+## Step 5: Deploy from Workspace
+
+```bash
+# Deploy from the workspace path (NOT local path)
+databricks apps deploy <APP_NAME> --source-code-path /Workspace/Users/<YOUR_EMAIL>/brickchat --profile <PROFILE>
+```
+
+**Common mistake:** Using `--source-code-path ./deployment` will fail with "must be a valid workspace path" error.
+
+For subsequent updates:
+1. Run the sync command again
+2. Run the deploy command again
 
 ## Step 6: Verify Deployment
 
 ```bash
 # Check app status
-databricks apps get <APP_NAME>
+databricks apps get <APP_NAME> --profile <PROFILE>
 
-# View logs
-databricks apps logs <APP_NAME>
+# View logs (if needed)
+databricks apps logs <APP_NAME> --profile <PROFILE>
 ```
+
+**Success indicators:**
+- `app_status.state`: `RUNNING`
+- `compute_status.state`: `ACTIVE`
+- `active_deployment.status.state`: `SUCCEEDED`
+- `url`: The app URL will be displayed
 
 ## Quick Reference
 
 | Task | Command |
 |------|---------|
+| Check app exists | `databricks apps get <APP_NAME> --profile <PROFILE>` |
+| Create app (once) | `databricks apps create <APP_NAME> --description "BrickChat - AI Chat Application" --profile <PROFILE>` |
 | Update deployment | `cd deployment && ./update_deployment.sh` |
-| Local test | `uv run uvicorn app:app --host 0.0.0.0 --port 8000` |
-| Create app (once) | `databricks apps create <APP_NAME>` |
-| Deploy | `databricks apps deploy <APP_NAME> --source-code-path ./deployment` |
-| Check status | `databricks apps get <APP_NAME>` |
-| View logs | `databricks apps logs <APP_NAME>` |
+| Local test | `cd deployment && uv run uvicorn app:app --host 0.0.0.0 --port 8000` |
+| Sync to workspace | `databricks sync ./deployment /Workspace/Users/<EMAIL>/brickchat --profile <PROFILE> --full` |
+| Deploy | `databricks apps deploy <APP_NAME> --source-code-path /Workspace/Users/<EMAIL>/brickchat --profile <PROFILE>` |
+| Check status | `databricks apps get <APP_NAME> --profile <PROFILE>` |
+| View logs | `databricks apps logs <APP_NAME> --profile <PROFILE>` |
 | Health check | `curl http://localhost:8000/health` |
 
 ## Troubleshooting
 
+### "Source code path must be a valid workspace path" error
+This happens when using a local path with `databricks apps deploy`. Solution:
+1. First sync files to workspace: `databricks sync ./deployment /Workspace/Users/<EMAIL>/brickchat --profile <PROFILE> --full`
+2. Then deploy from workspace path: `databricks apps deploy <APP_NAME> --source-code-path /Workspace/Users/<EMAIL>/brickchat --profile <PROFILE>`
+
+### "App does not exist or is deleted" error
+Create the app first:
+```bash
+databricks apps create <APP_NAME> --description "BrickChat - AI Chat Application" --profile <PROFILE>
+```
+Wait for creation to complete before deploying.
+
 ### App won't start
-- Check logs: `databricks apps logs <APP_NAME>`
+- Check logs: `databricks apps logs <APP_NAME> --profile <PROFILE>`
 - Verify secrets are configured in Databricks workspace
 - Ensure database is accessible from Databricks
 
