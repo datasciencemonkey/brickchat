@@ -13,11 +13,8 @@ logger = logging.getLogger(__name__)
 # Configuration from environment
 DOCUMENTS_VOLUME_PATH = os.environ.get('DOCUMENTS_VOLUME_PATH', './documents')
 DATABRICKS_BASE_URL = os.environ.get('DATABRICKS_BASE_URL', '')
-DATABRICKS_DOCUMENT_MODEL = os.environ.get('DATABRICKS_DOCUMENT_MODEL', 'claude-opus-4-5')
+DATABRICKS_DOCUMENT_MODEL = os.environ.get('DATABRICKS_DOCUMENT_MODEL', 'databricks-claude-sonnet-4-5')
 DATABRICKS_TOKEN = os.environ.get('DATABRICKS_TOKEN', '')
-
-# Export for backward compatibility
-CLAUDE_MODEL = DATABRICKS_DOCUMENT_MODEL
 
 # Limits
 MAX_FILES_PER_THREAD = 10

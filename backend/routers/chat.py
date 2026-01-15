@@ -8,7 +8,7 @@ import re
 from typing import List
 from database import initialize_database
 from auth import get_current_user, UserContext
-from document_service import document_service, CLAUDE_MODEL as DOCUMENT_CLAUDE_MODEL
+from document_service import document_service, DATABRICKS_DOCUMENT_MODEL
 import logging
 
 load_dotenv()
@@ -216,7 +216,7 @@ def stream_claude_with_documents(
     # Call Claude via document_service client
     client = document_service.claude_client
     response = client.chat.completions.create(
-        model=DOCUMENT_CLAUDE_MODEL,
+        model=DATABRICKS_DOCUMENT_MODEL,
         messages=messages,
         stream=True
     )
@@ -240,14 +240,14 @@ async def _handle_document_chat(
         user_id=user_id,
         message_role="user",
         message_content=message_text,
-        agent_endpoint=DOCUMENT_CLAUDE_MODEL
+        agent_endpoint=DATABRICKS_DOCUMENT_MODEL
     )
 
     if use_streaming:
         def generate_stream():
             try:
                 # Send metadata first
-                yield f"data: {json.dumps({'metadata': {'thread_id': thread_id, 'user_message_id': user_message_id, 'user_id': user_id, 'agent_endpoint': DOCUMENT_CLAUDE_MODEL}})}\n\n"
+                yield f"data: {json.dumps({'metadata': {'thread_id': thread_id, 'user_message_id': user_message_id, 'user_id': user_id, 'agent_endpoint': DATABRICKS_DOCUMENT_MODEL}})}\n\n"
 
                 full_response_parts = []
 
@@ -269,7 +269,7 @@ async def _handle_document_chat(
                         user_id=user_id,
                         message_role="assistant",
                         message_content=full_response,
-                        agent_endpoint=DOCUMENT_CLAUDE_MODEL
+                        agent_endpoint=DATABRICKS_DOCUMENT_MODEL
                     )
                     yield f"data: {json.dumps({'assistant_message_id': assistant_message_id})}\n\n"
 
@@ -307,7 +307,7 @@ async def _handle_document_chat(
                 user_id=user_id,
                 message_role="assistant",
                 message_content=full_response,
-                agent_endpoint=DOCUMENT_CLAUDE_MODEL
+                agent_endpoint=DATABRICKS_DOCUMENT_MODEL
             )
 
             return {
@@ -317,7 +317,7 @@ async def _handle_document_chat(
                 "thread_id": thread_id,
                 "user_message_id": user_message_id,
                 "assistant_message_id": assistant_message_id,
-                "agent_endpoint": DOCUMENT_CLAUDE_MODEL,
+                "agent_endpoint": DATABRICKS_DOCUMENT_MODEL,
                 "status": "success"
             }
         except Exception as e:

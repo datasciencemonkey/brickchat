@@ -2,8 +2,12 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Depends
 from typing import List, Optional
 import logging
+from dotenv import load_dotenv
 
-from document_service import document_service, MAX_FILES_PER_THREAD, CLAUDE_MODEL
+# Load environment before importing modules that need it
+load_dotenv()
+
+from document_service import document_service, MAX_FILES_PER_THREAD, DATABRICKS_DOCUMENT_MODEL
 from auth import get_current_user, UserContext
 from database import initialize_database
 
@@ -67,7 +71,7 @@ async def upload_documents(
         "thread_id": thread_id,
         "documents": uploaded_docs,
         "total_size": total_size,
-        "endpoint": CLAUDE_MODEL
+        "endpoint": DATABRICKS_DOCUMENT_MODEL
     }
 
 
