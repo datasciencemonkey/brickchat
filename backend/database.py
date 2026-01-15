@@ -43,7 +43,7 @@ class DatabaseManager:
                 user=os.getenv('PGUSER', 'service_brickchat'),
                 password=os.getenv('PG_PASS', ''),
                 port=os.getenv('PGPORT', '5432'),
-                sslmode='require' if 'azuredatabricks' in os.getenv('PGHOST', '') else 'prefer'
+                sslmode='require' if 'databricks' in os.getenv('PGHOST', '') else 'prefer'
             )
             logger.info("Database connection pool initialized successfully")
         except Exception as e:

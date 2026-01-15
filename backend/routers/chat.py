@@ -165,18 +165,18 @@ async def get_config():
 
 
 # =============================================================================
-# Document Chat Functions (Claude integration)
+# Document Chat Functions (Model integration)
 # =============================================================================
 
-def stream_claude_with_documents(
+def stream_model_with_documents(
     message: str,
     user_id: str,
     thread_id: str,
     conversation_history: List[dict]
 ):
-    """Stream response from Claude with document context"""
+    """Stream response from model with document context"""
     # Load documents for this thread
-    doc_contents = document_service.load_documents_for_claude(user_id, thread_id)
+    doc_contents = document_service.load_documents_for_model(user_id, thread_id)
 
     # Build messages array with documents
     messages = []
@@ -213,8 +213,8 @@ def stream_claude_with_documents(
         'content': message
     })
 
-    # Call Claude via document_service client
-    client = document_service.claude_client
+    # Call model via document_service client
+    client = document_service.model_client
     response = client.chat.completions.create(
         model=DATABRICKS_DOCUMENT_MODEL,
         messages=messages,
@@ -252,7 +252,7 @@ async def _handle_document_chat(
                 full_response_parts = []
 
                 # Stream from Claude
-                for content in stream_claude_with_documents(
+                for content in stream_model_with_documents(
                     message=message_text,
                     user_id=user_id,
                     thread_id=thread_id,
@@ -292,7 +292,7 @@ async def _handle_document_chat(
         # Non-streaming mode
         try:
             full_response_parts = []
-            for content in stream_claude_with_documents(
+            for content in stream_model_with_documents(
                 message=message_text,
                 user_id=user_id,
                 thread_id=thread_id,

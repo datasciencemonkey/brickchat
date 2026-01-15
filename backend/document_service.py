@@ -1,20 +1,33 @@
-"""Document storage and Claude API service for BrickChat"""
+"""Document storage and model API service for BrickChat"""
 import os
+import io
 import json
 import base64
 import logging
 from datetime import datetime
 from typing import List, Dict, Optional, Tuple
 from pathlib import Path
+from dotenv import load_dotenv
 from openai import OpenAI
+from databricks.sdk import WorkspaceClient
+
+# Load environment variables before accessing them
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
 # Configuration from environment
-DOCUMENTS_VOLUME_PATH = os.environ.get('DOCUMENTS_VOLUME_PATH', './documents')
+DOCUMENTS_VOLUME_PATH = os.environ.get('DOCUMENTS_VOLUME_PATH', './documents').rstrip('/')
 DATABRICKS_BASE_URL = os.environ.get('DATABRICKS_BASE_URL', '')
 DATABRICKS_DOCUMENT_MODEL = os.environ.get('DATABRICKS_DOCUMENT_MODEL', 'databricks-claude-sonnet-4-5')
 DATABRICKS_TOKEN = os.environ.get('DATABRICKS_TOKEN', '')
+
+# Extract Databricks host from base URL for SDK
+# e.g., https://fevm-serverless-9cefok.cloud.databricks.com/serving-endpoints -> https://fevm-serverless-9cefok.cloud.databricks.com
+DATABRICKS_HOST = '/'.join(DATABRICKS_BASE_URL.split('/')[:3]) if DATABRICKS_BASE_URL else ''
+
+# Check if we're using a Unity Catalog volume path (starts with /Volumes/)
+IS_VOLUME_PATH = DOCUMENTS_VOLUME_PATH.startswith('/Volumes/')
 
 # Limits
 MAX_FILES_PER_THREAD = 10
@@ -23,24 +36,43 @@ ALLOWED_EXTENSIONS = {'.pdf', '.txt'}
 
 
 class DocumentService:
-    """Handles document storage and Claude API integration"""
+    """Handles document storage and model API integration"""
 
     def __init__(self):
-        self._claude_client = None
+        self._model_client = None
+        self._workspace_client = None
 
     @property
-    def claude_client(self) -> OpenAI:
-        """Lazy-load Claude client"""
-        if self._claude_client is None:
-            self._claude_client = OpenAI(
+    def model_client(self) -> OpenAI:
+        """Lazy-load model client"""
+        if self._model_client is None:
+            self._model_client = OpenAI(
                 api_key=DATABRICKS_TOKEN,
                 base_url=DATABRICKS_BASE_URL
             )
-        return self._claude_client
+        return self._model_client
 
-    def get_thread_documents_path(self, user_id: str, thread_id: str) -> Path:
+    @property
+    def workspace_client(self) -> WorkspaceClient:
+        """Lazy-load Databricks WorkspaceClient for Unity Catalog volume operations"""
+        if self._workspace_client is None:
+            self._workspace_client = WorkspaceClient(
+                host=DATABRICKS_HOST,
+                token=DATABRICKS_TOKEN
+            )
+        return self._workspace_client
+
+    def get_thread_documents_path(self, user_id: str, thread_id: str) -> str:
         """Get the path to a thread's document directory"""
-        return Path(DOCUMENTS_VOLUME_PATH) / user_id / thread_id
+        return f"{DOCUMENTS_VOLUME_PATH}/{user_id}/{thread_id}"
+
+    def _get_file_path(self, user_id: str, thread_id: str, filename: str) -> str:
+        """Get the full path to a specific file"""
+        return f"{self.get_thread_documents_path(user_id, thread_id)}/{filename}"
+
+    def _get_metadata_path(self, user_id: str, thread_id: str) -> str:
+        """Get the path to the metadata.json file"""
+        return f"{self.get_thread_documents_path(user_id, thread_id)}/metadata.json"
 
     def validate_file(self, filename: str, size: int) -> Tuple[bool, str]:
         """Validate file against limits"""
@@ -58,19 +90,29 @@ class DocumentService:
         filename: str,
         content: bytes
     ) -> Dict:
-        """Save a document to the volume"""
-        doc_path = self.get_thread_documents_path(user_id, thread_id)
-        doc_path.mkdir(parents=True, exist_ok=True)
-
+        """Save a document to the volume (Unity Catalog or local)"""
         # Check existing document count
         existing_docs = self.list_documents(user_id, thread_id)
         if len(existing_docs) >= MAX_FILES_PER_THREAD:
             raise ValueError(f"Maximum {MAX_FILES_PER_THREAD} documents per thread exceeded")
 
-        # Save the file
-        file_path = doc_path / filename
-        with open(file_path, 'wb') as f:
-            f.write(content)
+        file_path = self._get_file_path(user_id, thread_id, filename)
+
+        if IS_VOLUME_PATH:
+            # Use Databricks SDK to upload to Unity Catalog volume
+            self.workspace_client.files.upload(
+                file_path,
+                io.BytesIO(content),
+                overwrite=True
+            )
+            logger.info(f"Uploaded document {filename} to Unity Catalog volume: {file_path}")
+        else:
+            # Use local filesystem
+            local_path = Path(file_path)
+            local_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(local_path, 'wb') as f:
+                f.write(content)
+            logger.info(f"Saved document {filename} to local path: {file_path}")
 
         # Update metadata
         metadata = self._load_metadata(user_id, thread_id)
@@ -82,7 +124,6 @@ class DocumentService:
         }
         self._save_metadata(user_id, thread_id, metadata)
 
-        logger.info(f"Saved document {filename} for user {user_id}, thread {thread_id}")
         return {
             'filename': filename,
             'size': len(content),
@@ -105,11 +146,21 @@ class DocumentService:
 
     def delete_document(self, user_id: str, thread_id: str, filename: str) -> bool:
         """Delete a document from a thread"""
-        doc_path = self.get_thread_documents_path(user_id, thread_id)
-        file_path = doc_path / filename
+        file_path = self._get_file_path(user_id, thread_id, filename)
 
-        if file_path.exists():
-            file_path.unlink()
+        try:
+            if IS_VOLUME_PATH:
+                # Use Databricks SDK to delete from Unity Catalog volume
+                self.workspace_client.files.delete(file_path)
+                logger.info(f"Deleted document {filename} from Unity Catalog volume: {file_path}")
+            else:
+                # Use local filesystem
+                local_path = Path(file_path)
+                if local_path.exists():
+                    local_path.unlink()
+                    logger.info(f"Deleted document {filename} from local path: {file_path}")
+                else:
+                    return False
 
             # Update metadata
             metadata = self._load_metadata(user_id, thread_id)
@@ -117,26 +168,43 @@ class DocumentService:
                 del metadata['documents'][filename]
                 self._save_metadata(user_id, thread_id, metadata)
 
-            logger.info(f"Deleted document {filename} for user {user_id}, thread {thread_id}")
             return True
-        return False
+        except Exception as e:
+            logger.error(f"Failed to delete document {filename}: {e}")
+            return False
 
     def thread_has_documents(self, user_id: str, thread_id: str) -> bool:
         """Check if a thread has any documents"""
         return len(self.list_documents(user_id, thread_id)) > 0
 
-    def load_documents_for_claude(self, user_id: str, thread_id: str) -> List[Dict]:
-        """Load documents formatted for Claude API"""
-        doc_path = self.get_thread_documents_path(user_id, thread_id)
+    def _read_file_content(self, file_path: str) -> Optional[bytes]:
+        """Read file content from Unity Catalog volume or local filesystem"""
+        try:
+            if IS_VOLUME_PATH:
+                # Use Databricks SDK to download from Unity Catalog volume
+                response = self.workspace_client.files.download(file_path)
+                return response.contents.read()
+            else:
+                # Use local filesystem
+                local_path = Path(file_path)
+                if local_path.exists():
+                    with open(local_path, 'rb') as f:
+                        return f.read()
+                return None
+        except Exception as e:
+            logger.error(f"Failed to read file {file_path}: {e}")
+            return None
+
+    def load_documents_for_model(self, user_id: str, thread_id: str) -> List[Dict]:
+        """Load documents formatted for model API"""
         documents = self.list_documents(user_id, thread_id)
         result = []
 
         for doc in documents:
-            file_path = doc_path / doc['filename']
-            if file_path.exists():
-                with open(file_path, 'rb') as f:
-                    content = f.read()
+            file_path = self._get_file_path(user_id, thread_id, doc['filename'])
+            content = self._read_file_content(file_path)
 
+            if content is not None:
                 if doc['filename'].endswith('.pdf'):
                     # PDF: send as base64-encoded file
                     result.append({
@@ -158,19 +226,33 @@ class DocumentService:
 
     def _load_metadata(self, user_id: str, thread_id: str) -> Dict:
         """Load metadata.json for a thread"""
-        metadata_path = self.get_thread_documents_path(user_id, thread_id) / 'metadata.json'
-        if metadata_path.exists():
-            with open(metadata_path, 'r') as f:
-                return json.load(f)
+        metadata_path = self._get_metadata_path(user_id, thread_id)
+        content = self._read_file_content(metadata_path)
+        if content is not None:
+            try:
+                return json.loads(content.decode('utf-8'))
+            except json.JSONDecodeError:
+                logger.error(f"Failed to parse metadata at {metadata_path}")
         return {}
 
     def _save_metadata(self, user_id: str, thread_id: str, metadata: Dict):
         """Save metadata.json for a thread"""
-        doc_path = self.get_thread_documents_path(user_id, thread_id)
-        doc_path.mkdir(parents=True, exist_ok=True)
-        metadata_path = doc_path / 'metadata.json'
-        with open(metadata_path, 'w') as f:
-            json.dump(metadata, f, indent=2)
+        metadata_path = self._get_metadata_path(user_id, thread_id)
+        content = json.dumps(metadata, indent=2).encode('utf-8')
+
+        if IS_VOLUME_PATH:
+            # Use Databricks SDK to upload to Unity Catalog volume
+            self.workspace_client.files.upload(
+                metadata_path,
+                io.BytesIO(content),
+                overwrite=True
+            )
+        else:
+            # Use local filesystem
+            local_path = Path(metadata_path)
+            local_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(local_path, 'w') as f:
+                f.write(content.decode('utf-8'))
 
 
 # Global instance
