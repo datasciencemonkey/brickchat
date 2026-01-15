@@ -10,7 +10,26 @@
 
 ---
 
-## Task 1: Create Document Service (Backend Core)
+## Implementation Progress
+
+| Task | Status | Commit |
+|------|--------|--------|
+| 1. Create Document Service | ✅ Complete | `2a2822c` |
+| 2. Create Documents Router | ✅ Complete | `014fad4` |
+| 3. Register Documents Router | ✅ Complete | `60997ba` |
+| 4. Modify Chat Router | ✅ Complete | `aad94cc` |
+| 5. Thread Messages + Documents | ✅ Complete | `8f2549e` |
+| 6. Document Chip Widget | ✅ Complete | `e36fa5e` |
+| 7. Documents Provider | 🔲 Pending | - |
+| 8. FastAPI Service Methods | 🔲 Pending | - |
+| 9. Upload Button Integration | 🔲 Pending | - |
+| 10. Endpoint Display Update | 🔲 Pending | - |
+| 11. Environment Variables | 🔲 Pending | - |
+| 12. Integration Test | 🔲 Pending | - |
+
+---
+
+## Task 1: Create Document Service (Backend Core) ✅
 
 **Files:**
 - Create: `backend/document_service.py`
