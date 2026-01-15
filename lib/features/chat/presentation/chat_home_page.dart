@@ -1106,8 +1106,17 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
     final appColors = context.appColors;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    // Get the endpoint name, use 'Unknown' if not set
+    // Get document count from provider
+    final documents = ref.watch(documentsProvider);
+    final docCount = documents.length;
+
+    // Get the endpoint name
     final endpointName = _currentAgentEndpoint ?? 'Unknown';
+
+    // Build display text
+    final displayText = docCount > 0
+        ? 'Agent Endpoint: $endpointName • $docCount doc${docCount > 1 ? 's' : ''}'
+        : 'Agent Endpoint: $endpointName';
 
     return Container(
       padding: const EdgeInsets.symmetric(
@@ -1120,7 +1129,9 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
             : appColors.muted.withValues(alpha: 0.7),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: appColors.sidebarBorder.withValues(alpha: 0.2),
+          color: docCount > 0
+              ? appColors.accent.withValues(alpha: 0.5)
+              : appColors.sidebarBorder.withValues(alpha: 0.2),
           width: 1,
         ),
       ),
@@ -1128,13 +1139,15 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
-            Icons.smart_toy_outlined,
+            docCount > 0 ? Icons.description : Icons.smart_toy_outlined,
             size: 13,
-            color: appColors.sidebarPrimary.withValues(alpha: 0.7),
+            color: docCount > 0
+                ? appColors.accent
+                : appColors.sidebarPrimary.withValues(alpha: 0.7),
           ),
           const SizedBox(width: 6),
           Text(
-            'Agent Endpoint: $endpointName',
+            displayText,
             style: TextStyle(
               fontSize: 10.5,
               color: appColors.messageText.withValues(alpha: 0.65),
