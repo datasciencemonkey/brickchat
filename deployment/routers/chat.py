@@ -5,8 +5,10 @@ import os
 from dotenv import load_dotenv
 import json
 import re
+from typing import List
 from database import initialize_database
 from auth import get_current_user, UserContext
+from document_service import document_service, DATABRICKS_DOCUMENT_MODEL
 import logging
 
 load_dotenv()
@@ -162,6 +164,170 @@ async def get_config():
     }
 
 
+# =============================================================================
+# Document Chat Functions (Model integration)
+# =============================================================================
+
+def stream_model_with_documents(
+    message: str,
+    user_id: str,
+    thread_id: str,
+    conversation_history: List[dict]
+):
+    """Stream response from model with document context"""
+    # Load documents for this thread
+    doc_contents = document_service.load_documents_for_model(user_id, thread_id)
+
+    # Build messages array with documents
+    messages = []
+
+    # Add document context as first user message
+    if doc_contents:
+        doc_message_content = []
+        for doc in doc_contents:
+            doc_message_content.append(doc)
+        doc_message_content.append({
+            'type': 'text',
+            'text': 'I have uploaded the above documents. Please use them to answer my questions.'
+        })
+        messages.append({
+            'role': 'user',
+            'content': doc_message_content
+        })
+        # Add assistant acknowledgment
+        messages.append({
+            'role': 'assistant',
+            'content': 'I have received and reviewed the documents you uploaded. I will use them to answer your questions. What would you like to know?'
+        })
+
+    # Add conversation history
+    for msg in conversation_history:
+        messages.append({
+            'role': msg.get('role', 'user'),
+            'content': msg.get('content', '')
+        })
+
+    # Add current message
+    messages.append({
+        'role': 'user',
+        'content': message
+    })
+
+    # Call model via document_service client
+    client = document_service.model_client
+    response = client.chat.completions.create(
+        model=DATABRICKS_DOCUMENT_MODEL,
+        messages=messages,
+        stream=True
+    )
+
+    for chunk in response:
+        if chunk.choices and chunk.choices[0].delta.content:
+            yield chunk.choices[0].delta.content
+
+
+async def _handle_document_chat(
+    message_text: str,
+    thread_id: str,
+    user_id: str,
+    conversation_history: List[dict],
+    use_streaming: bool
+):
+    """Handle chat with document context via Claude"""
+    # Save user message
+    user_message_id = chat_db.save_message(
+        thread_id=thread_id,
+        user_id=user_id,
+        message_role="user",
+        message_content=message_text,
+        agent_endpoint=DATABRICKS_DOCUMENT_MODEL
+    )
+
+    if use_streaming:
+        def generate_stream():
+            try:
+                # Send metadata first
+                yield f"data: {json.dumps({'metadata': {'thread_id': thread_id, 'user_message_id': user_message_id, 'user_id': user_id, 'agent_endpoint': DATABRICKS_DOCUMENT_MODEL}})}\n\n"
+
+                full_response_parts = []
+
+                # Stream from Claude
+                for content in stream_model_with_documents(
+                    message=message_text,
+                    user_id=user_id,
+                    thread_id=thread_id,
+                    conversation_history=conversation_history
+                ):
+                    full_response_parts.append(content)
+                    yield f"data: {json.dumps({'content': content})}\n\n"
+
+                # Save assistant message
+                full_response = ''.join(full_response_parts)
+                if full_response:
+                    assistant_message_id = chat_db.save_message(
+                        thread_id=thread_id,
+                        user_id=user_id,
+                        message_role="assistant",
+                        message_content=full_response,
+                        agent_endpoint=DATABRICKS_DOCUMENT_MODEL
+                    )
+                    yield f"data: {json.dumps({'assistant_message_id': assistant_message_id})}\n\n"
+
+                yield f"data: {json.dumps({'done': True})}\n\n"
+
+            except Exception as e:
+                logger.error(f"Document chat streaming error: {e}")
+                yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+        return StreamingResponse(
+            generate_stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "Access-Control-Allow-Origin": "*",
+            }
+        )
+    else:
+        # Non-streaming mode
+        try:
+            full_response_parts = []
+            for content in stream_model_with_documents(
+                message=message_text,
+                user_id=user_id,
+                thread_id=thread_id,
+                conversation_history=conversation_history
+            ):
+                full_response_parts.append(content)
+
+            full_response = ''.join(full_response_parts)
+
+            assistant_message_id = chat_db.save_message(
+                thread_id=thread_id,
+                user_id=user_id,
+                message_role="assistant",
+                message_content=full_response,
+                agent_endpoint=DATABRICKS_DOCUMENT_MODEL
+            )
+
+            return {
+                "response": full_response,
+                "citations": [],
+                "backend": "claude",
+                "thread_id": thread_id,
+                "user_message_id": user_message_id,
+                "assistant_message_id": assistant_message_id,
+                "agent_endpoint": DATABRICKS_DOCUMENT_MODEL,
+                "status": "success"
+            }
+        except Exception as e:
+            return {
+                "response": f"Error: {str(e)}",
+                "backend": "claude",
+                "status": "error"
+            }
+
+
 @router.get("/threads")
 async def get_user_threads(user: UserContext = Depends(get_current_user)):
     """Get all chat threads for the authenticated user with their last message"""
@@ -177,12 +343,22 @@ async def get_user_threads(user: UserContext = Depends(get_current_user)):
 async def get_thread_messages(
     thread_id: str,
     limit: int = Query(default=None, ge=1, le=500, description="Maximum messages to return (default: all)"),
-    offset: int = Query(default=0, ge=0, description="Number of messages to skip")
+    offset: int = Query(default=0, ge=0, description="Number of messages to skip"),
+    user: UserContext = Depends(get_current_user)
 ):
-    """Get messages for a specific thread with optional pagination"""
+    """Get messages for a specific thread with optional pagination and document metadata"""
     try:
         messages = chat_db.get_thread_messages(thread_id, limit=limit, offset=offset)
-        return {"messages": messages, "limit": limit, "offset": offset}
+
+        # Check for documents in this thread
+        documents = document_service.list_documents(user.user_id, thread_id)
+
+        return {
+            "messages": messages,
+            "limit": limit,
+            "offset": offset,
+            "documents": documents  # Include document metadata
+        }
     except Exception as e:
         logger.error(f"Error fetching thread messages: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch messages: {str(e)}")
@@ -220,6 +396,22 @@ async def send_message(message: dict, user: UserContext = Depends(get_current_us
         if not thread_id:
             thread_id = chat_db.create_thread(user_id=user_id)
             logger.info(f"Created new thread: {thread_id}")
+
+        # Check if thread has documents - route to Claude if so
+        has_documents = False
+        if thread_id:
+            has_documents = document_service.thread_has_documents(user_id, thread_id)
+
+        if has_documents:
+            # Route to Claude with documents
+            logger.info(f"Thread {thread_id} has documents, routing to Claude")
+            return await _handle_document_chat(
+                message_text=message_text,
+                thread_id=thread_id,
+                user_id=user_id,
+                conversation_history=conversation_history,
+                use_streaming=use_streaming
+            )
 
         # Save user message to database
         user_message_id = chat_db.save_message(

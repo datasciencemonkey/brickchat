@@ -12,6 +12,7 @@ BrickChat provides a complete chat experience for interacting with AI agents hos
 - **Authenticates users automatically** via Databricks Apps on-behalf-of flow
 - **Supports voice input** with browser-native speech-to-text
 - **Provides text-to-speech** playback via Deepgram or Replicate APIs
+- **TalkToMyPDF**: Upload and chat with PDF/TXT documents using multimodal AI
 
 ## Architecture
 
@@ -30,6 +31,7 @@ flowchart TB
     API -->|OpenAI API| DAI[Databricks AI<br/>Serving Endpoint]
     API -->|TTS API| DG[Deepgram]
     API -->|TTS API| REP[Replicate]
+    API -->|Files API| UC[(Unity Catalog<br/>Volumes)]
 ```
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed diagrams and data flows.
@@ -127,6 +129,8 @@ For full-stack development, the backend serves the Flutter build at `http://loca
 | `DATABRICKS_TOKEN` | Personal access token for Databricks API | Yes |
 | `DATABRICKS_BASE_URL` | Serving endpoint base URL | Yes |
 | `DATABRICKS_MODEL` | Model/endpoint name | Yes |
+| `DATABRICKS_DOCUMENT_MODEL` | Model for document Q&A (default: `databricks-claude-sonnet-4-5`) | No |
+| `DOCUMENTS_VOLUME_PATH` | Unity Catalog volume path for documents (e.g., `/Volumes/catalog/schema/volume`) | No |
 | `PGHOST` | PostgreSQL hostname | Yes |
 | `PGDATABASE` | Database name (default: `brickchat`) | Yes |
 | `PGUSER` | Database username | Yes |
@@ -154,6 +158,13 @@ See [deployment/postgres_setup.md](deployment/postgres_setup.md) for detailed se
 - Markdown rendering with code syntax highlighting
 - Collapsible reasoning sections for AI transparency
 
+### TalkToMyPDF (Document Q&A)
+- Upload PDF and TXT files (up to 10MB each, max 10 per thread)
+- Documents stored securely in Unity Catalog volumes
+- Chat with your documents using multimodal AI (Claude Sonnet 4.5)
+- Per-user, per-thread document isolation
+- Automatic document context injection into conversations
+
 ### Voice & Audio
 - Speech-to-text via browser Web Speech API
 - Text-to-speech with 18+ voice options (Deepgram Aura, Replicate Kokoro)
@@ -168,6 +179,7 @@ See [deployment/postgres_setup.md](deployment/postgres_setup.md) for detailed se
 - SSO authentication via Databricks Apps headers
 - On-behalf-of API calls with user context
 - PostgreSQL-backed persistence with connection pooling
+- Unity Catalog integration for secure document storage
 
 ## Project Structure
 
@@ -178,9 +190,10 @@ brickchat/
 │   ├── features/          # Chat, settings pages
 │   └── shared/            # Reusable widgets
 ├── backend/               # FastAPI backend (Python) - for development
-│   ├── routers/           # API endpoints (chat, tts, feedback)
+│   ├── routers/           # API endpoints (chat, tts, feedback, documents)
 │   ├── app.py             # Main application
-│   └── database.py        # PostgreSQL connection
+│   ├── database.py        # PostgreSQL connection
+│   └── document_service.py # Document storage and model API
 ├── deployment/            # Production deployment files
 │   ├── app.yaml           # Databricks Apps config
 │   ├── build/             # Flutter WASM build output

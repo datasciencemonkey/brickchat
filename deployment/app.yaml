@@ -46,7 +46,7 @@ env:
   - name: DATABRICKS_LLM_MODEL
     value: 'databricks-gemma-3-12b'
   
-  - name: DATABRICKS_VOLUME
+  - name: DOCUMENTS_VOLUME_PATH
     value: "/Volumes/serverless_9cefok_catalog/sgfs/data/brickchat/"
 
 # App resources - secrets the app's service principal can access
