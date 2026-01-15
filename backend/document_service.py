@@ -12,9 +12,12 @@ logger = logging.getLogger(__name__)
 
 # Configuration from environment
 DOCUMENTS_VOLUME_PATH = os.environ.get('DOCUMENTS_VOLUME_PATH', './documents')
-CLAUDE_BASE_URL = os.environ.get('CLAUDE_BASE_URL', os.environ.get('DATABRICKS_BASE_URL', ''))
-CLAUDE_MODEL = os.environ.get('CLAUDE_MODEL', 'claude-opus-4-5')
-CLAUDE_TOKEN = os.environ.get('CLAUDE_TOKEN', os.environ.get('DATABRICKS_TOKEN', ''))
+DATABRICKS_BASE_URL = os.environ.get('DATABRICKS_BASE_URL', '')
+DATABRICKS_DOCUMENT_MODEL = os.environ.get('DATABRICKS_DOCUMENT_MODEL', 'claude-opus-4-5')
+DATABRICKS_TOKEN = os.environ.get('DATABRICKS_TOKEN', '')
+
+# Export for backward compatibility
+CLAUDE_MODEL = DATABRICKS_DOCUMENT_MODEL
 
 # Limits
 MAX_FILES_PER_THREAD = 10
@@ -33,8 +36,8 @@ class DocumentService:
         """Lazy-load Claude client"""
         if self._claude_client is None:
             self._claude_client = OpenAI(
-                api_key=CLAUDE_TOKEN,
-                base_url=CLAUDE_BASE_URL
+                api_key=DATABRICKS_TOKEN,
+                base_url=DATABRICKS_BASE_URL
             )
         return self._claude_client
 
