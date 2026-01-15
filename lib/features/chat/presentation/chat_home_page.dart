@@ -276,62 +276,195 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
     });
   }
 
+  /// Send message with documents using combined endpoint (direct LLM integration)
+  /// Documents are sent directly to LLM, saved to volume in background
+  Future<void> _sendMessageWithDocuments(String messageText, List<StagedDocument> documents) async {
+    // Mark documents as uploading
+    for (final doc in documents) {
+      ref.read(documentsProvider.notifier).setUploading(doc.filename, true);
+    }
+
+    final message = ChatMessage(
+      id: 'user_${DateTime.now().millisecondsSinceEpoch}',
+      text: messageText,
+      isOwn: true,
+      timestamp: DateTime.now(),
+      author: 'You',
+    );
+
+    setState(() {
+      _messages.add(message);
+      _messageController.clear();
+      _showSpeechToText = false;
+      _showWelcomeScreen = false;
+    });
+
+    // Add user message to conversation history
+    _conversationHistory.add({
+      'role': 'user',
+      'content': messageText,
+    });
+
+    _scrollToBottom();
+
+    // Show typing indicator
+    final typingMessage = ChatMessage(
+      id: 'typing_${DateTime.now().millisecondsSinceEpoch}',
+      text: 'Assistant is typing...',
+      isOwn: false,
+      timestamp: DateTime.now(),
+      author: 'Assistant',
+    );
+
+    setState(() {
+      _messages.add(typingMessage);
+    });
+    _scrollToBottom();
+
+    // Allow typing indicator to show
+    await Future.delayed(const Duration(milliseconds: 1000));
+
+    try {
+      // Prepare documents for upload
+      final docsForUpload = documents.map((doc) => {
+        'filename': doc.filename,
+        'bytes': doc.bytes!,
+      }).toList();
+
+      // Prepare conversation context
+      final conversationContext = _prepareConversationContext();
+
+      // Remove typing indicator and add empty message for streaming
+      final assistantMessageId = 'assistant_${DateTime.now().millisecondsSinceEpoch}';
+      final assistantMessage = ChatMessage(
+        id: assistantMessageId,
+        text: '',
+        isOwn: false,
+        timestamp: DateTime.now(),
+        author: 'Assistant',
+        isStreaming: true,
+      );
+
+      setState(() {
+        _messages.removeWhere((msg) => msg.id.startsWith('typing_'));
+        _messages.add(assistantMessage);
+      });
+
+      // Stream response from combined endpoint
+      final responseBuffer = StringBuffer();
+
+      await for (final chunk in FastApiService.sendMessageWithDocuments(
+        message: messageText,
+        documents: docsForUpload,
+        threadId: _currentThreadId,
+        conversationHistory: conversationContext,
+      )) {
+        if (mounted) {
+          // Handle metadata (thread_id, user_id, agent_endpoint)
+          if (chunk.containsKey('metadata')) {
+            final metadata = chunk['metadata'] as Map<String, dynamic>;
+            setState(() {
+              _currentThreadId = metadata['thread_id'];
+              _currentAgentEndpoint = metadata['agent_endpoint'];
+            });
+            // Update user message with thread ID
+            final userMsgIndex = _messages.indexWhere((msg) => msg.id == message.id);
+            if (userMsgIndex != -1) {
+              _messages[userMsgIndex].threadId = _currentThreadId;
+            }
+            // Update assistant message
+            final assistantMsgIndex = _messages.indexWhere((msg) => msg.id == assistantMessageId);
+            if (assistantMsgIndex != -1) {
+              _messages[assistantMsgIndex].agentEndpoint = _currentAgentEndpoint;
+            }
+          }
+          // Handle assistant message ID
+          else if (chunk.containsKey('assistant_message_id')) {
+            final assistantMsgIndex = _messages.indexWhere((msg) => msg.id == assistantMessageId);
+            if (assistantMsgIndex != -1) {
+              _messages[assistantMsgIndex].threadId = _currentThreadId;
+              _messages[assistantMsgIndex].messageId = chunk['assistant_message_id'];
+            }
+          }
+          // Handle content chunks
+          else if (chunk.containsKey('content')) {
+            responseBuffer.write(chunk['content']);
+
+            // Update the message text
+            final messageIndex = _messages.indexWhere((msg) => msg.id == assistantMessageId);
+            if (messageIndex != -1) {
+              _messages[messageIndex].text = responseBuffer.toString();
+              setState(() {});
+              _scrollToBottom();
+            }
+          }
+          // Handle errors
+          else if (chunk.containsKey('error')) {
+            responseBuffer.write('Error: ${chunk['error']}');
+            final messageIndex = _messages.indexWhere((msg) => msg.id == assistantMessageId);
+            if (messageIndex != -1) {
+              _messages[messageIndex].text = responseBuffer.toString();
+              setState(() {});
+            }
+            break;
+          }
+        }
+      }
+
+      // Mark streaming as complete
+      if (mounted) {
+        final messageIndex = _messages.indexWhere((msg) => msg.id == assistantMessageId);
+        if (messageIndex != -1) {
+          _messages[messageIndex].isStreaming = false;
+          setState(() {});
+        }
+
+        // Clear the staged documents (they've been sent to the LLM and are being saved in background)
+        ref.read(documentsProvider.notifier).clear();
+
+        // Add response to conversation history
+        if (responseBuffer.isNotEmpty) {
+          _conversationHistory.add({
+            'role': 'assistant',
+            'content': responseBuffer.toString(),
+          });
+        }
+      }
+    } catch (error) {
+      // Remove typing indicator and show error
+      if (mounted) {
+        setState(() {
+          _messages.removeWhere((msg) => msg.id.startsWith('typing_'));
+          _messages.add(ChatMessage(
+            id: 'error_${DateTime.now().millisecondsSinceEpoch}',
+            text: 'Sorry, I encountered an error: ${error.toString()}',
+            isOwn: false,
+            timestamp: DateTime.now(),
+            author: 'Assistant',
+          ));
+        });
+        _scrollToBottom();
+
+        // Reset uploading state on error
+        for (final doc in documents) {
+          ref.read(documentsProvider.notifier).setUploading(doc.filename, false);
+        }
+      }
+    }
+  }
+
   void _sendMessage({String? text}) async {
     final messageText = text ?? _messageController.text.trim();
     if (messageText.isEmpty) return;
 
-    // Upload any pending documents first
+    // Check if we have staged documents with bytes (not yet uploaded)
     final pendingDocs = ref.read(documentsProvider.notifier).pendingUploads;
-    if (pendingDocs.isNotEmpty) {
-      // Mark as uploading
-      for (final doc in pendingDocs) {
-        ref.read(documentsProvider.notifier).setUploading(doc.filename, true);
-      }
+    final hasPendingDocs = pendingDocs.isNotEmpty;
 
-      // Upload to backend
-      final uploadResult = await FastApiService.uploadDocuments(
-        files: pendingDocs.map((doc) => {
-          'filename': doc.filename,
-          'bytes': doc.bytes!,
-        }).toList(),
-        threadId: _currentThreadId,
-      );
-
-      if (uploadResult.containsKey('error')) {
-        // Handle upload error
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Upload failed: ${uploadResult['error']}'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-        // Reset uploading state
-        for (final doc in pendingDocs) {
-          ref.read(documentsProvider.notifier).setUploading(doc.filename, false);
-        }
-        return;
-      }
-
-      // Update thread ID if new
-      _currentThreadId = uploadResult['thread_id'];
-
-      // Mark documents as uploaded
-      final uploadedDocs = uploadResult['documents'] as List<dynamic>? ?? [];
-      for (final doc in uploadedDocs) {
-        ref.read(documentsProvider.notifier).markUploaded(
-          doc['filename'],
-          DateTime.now().toIso8601String(),
-        );
-      }
-
-      // Update endpoint display
-      if (uploadResult['endpoint'] != null) {
-        setState(() {
-          _currentAgentEndpoint = uploadResult['endpoint'];
-        });
-      }
+    // If we have pending documents, use the combined endpoint (send docs + message together)
+    if (hasPendingDocs) {
+      await _sendMessageWithDocuments(messageText, pendingDocs);
+      return;
     }
 
     final message = ChatMessage(

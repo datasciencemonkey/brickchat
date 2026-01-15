@@ -163,6 +163,84 @@ class FastApiService {
     return response['response'] ?? response['error'] ?? 'Unknown error';
   }
 
+  /// Send message with documents in a single request (streaming)
+  /// Documents are sent directly to LLM, saved to volume in background
+  /// Returns a stream of maps containing 'content', 'metadata', 'assistant_message_id', etc.
+  static Stream<Map<String, dynamic>> sendMessageWithDocuments({
+    required String message,
+    required List<Map<String, dynamic>> documents, // [{filename, bytes}]
+    String? threadId,
+    List<Map<String, String>>? conversationHistory,
+  }) async* {
+    try {
+      final url = Uri.parse('$baseUrl/api/chat/send-with-documents');
+
+      var request = http.MultipartRequest('POST', url);
+
+      // Add message
+      request.fields['message'] = message;
+
+      // Add thread_id if provided
+      if (threadId != null) {
+        request.fields['thread_id'] = threadId;
+      }
+
+      // Add conversation history as JSON
+      if (conversationHistory != null && conversationHistory.isNotEmpty) {
+        request.fields['conversation_history'] = json.encode(conversationHistory);
+      }
+
+      // Add document files
+      for (final doc in documents) {
+        final bytes = doc['bytes'];
+        if (bytes != null) {
+          request.files.add(http.MultipartFile.fromBytes(
+            'files',
+            bytes is List<int> ? bytes : List<int>.from(bytes),
+            filename: doc['filename'] as String,
+          ));
+        }
+      }
+
+      final streamedResponse = await request.send();
+
+      if (streamedResponse.statusCode == 200) {
+        await for (final chunk in streamedResponse.stream.transform(utf8.decoder)) {
+          // Parse each chunk for data: lines
+          final lines = chunk.split('\n');
+          for (final line in lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                final jsonStr = line.substring(6); // Remove 'data: '
+                final data = json.decode(jsonStr);
+
+                if (data['error'] != null) {
+                  yield {'error': data['error']};
+                  return;
+                } else if (data['done'] == true) {
+                  return;
+                } else if (data['metadata'] != null) {
+                  yield {'metadata': data['metadata']};
+                } else if (data['content'] != null) {
+                  yield {'content': data['content']};
+                } else if (data['assistant_message_id'] != null) {
+                  yield {'assistant_message_id': data['assistant_message_id']};
+                }
+              } catch (e) {
+                // Skip malformed chunks
+                continue;
+              }
+            }
+          }
+        }
+      } else {
+        yield {'error': 'Error: ${streamedResponse.statusCode}'};
+      }
+    } catch (e) {
+      yield {'error': 'Error sending message with documents: $e'};
+    }
+  }
+
   /// Stream TTS audio chunks via SSE
   /// Returns a stream of events containing audio chunks or control messages
   ///
