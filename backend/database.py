@@ -330,6 +330,57 @@ class ChatDatabase:
         result = self.db.execute_query_one(query, (message_id, user_id))
         return result['tts_cache'] if result and result.get('tts_cache') else None
 
+    def thread_has_documents(self, thread_id: str) -> bool:
+        """Check if a thread has documents by checking metadata in DB (fast, no volume access)"""
+        query = """
+            SELECT metadata->>'has_documents' as has_documents
+            FROM chat_threads
+            WHERE thread_id = %s
+        """
+        result = self.db.execute_query_one(query, (thread_id,))
+        return result is not None and result.get('has_documents') == 'true'
+
+    def update_thread_has_documents(self, thread_id: str, has_documents: bool) -> bool:
+        """Update the has_documents flag in thread metadata"""
+        query = """
+            UPDATE chat_threads
+            SET metadata = COALESCE(metadata, '{}'::jsonb) || %s
+            WHERE thread_id = %s
+            RETURNING thread_id
+        """
+        result = self.db.execute_query_one(
+            query,
+            (Json({"has_documents": "true" if has_documents else "false"}), thread_id)
+        )
+        return result is not None
+
+    def get_user_most_recent_thread(self, user_id: str) -> Optional[str]:
+        """Get the most recently updated thread for a user (by updated_at timestamp)"""
+        query = """
+            SELECT thread_id
+            FROM chat_threads
+            WHERE user_id = %s
+            ORDER BY updated_at DESC
+            LIMIT 1
+        """
+        result = self.db.execute_query_one(query, (user_id,))
+        return str(result['thread_id']) if result else None
+
+    def needs_document_reload(self, user_id: str, thread_id: str) -> bool:
+        """
+        Check if documents need to be reloaded from volume.
+        Returns True if:
+        - Thread has documents AND
+        - Thread is NOT the user's most recent thread (user is returning to old thread)
+        """
+        if not self.thread_has_documents(thread_id):
+            return False
+
+        most_recent = self.get_user_most_recent_thread(user_id)
+        needs_reload = most_recent != thread_id
+        logger.info(f"[DB] needs_document_reload: thread={thread_id}, most_recent={most_recent}, needs_reload={needs_reload}")
+        return needs_reload
+
     def initialize_schema(self):
         """Initialize database schema"""
         schema_path = os.path.join(os.path.dirname(__file__), 'schema.sql')
