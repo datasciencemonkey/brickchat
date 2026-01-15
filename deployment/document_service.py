@@ -313,6 +313,70 @@ class DocumentService:
 
         return result
 
+    def load_documents_via_sql(self, user_id: str, thread_id: str) -> List[Dict]:
+        """
+        Load documents using Databricks SQL READ_FILES() - much faster than SDK download.
+        Returns documents formatted for LLM API.
+        """
+        import time
+        start = time.time()
+        thread_path = self.get_thread_documents_path(user_id, thread_id)
+        logger.info(f"[DOC_SQL] Loading documents via SQL from {thread_path}")
+
+        result = []
+
+        try:
+            with self.sql_connection as conn:
+                with conn.cursor() as cursor:
+                    # Query to find all files in the thread directory (excluding metadata.json)
+                    # Using READ_FILES with binaryFile format returns base64-encoded content
+                    query = f"""
+                        SELECT
+                            path,
+                            content
+                        FROM READ_FILES(
+                            '{thread_path}/*',
+                            format => 'binaryFile'
+                        )
+                        WHERE path NOT LIKE '%metadata.json'
+                    """
+                    cursor.execute(query)
+                    rows = cursor.fetchall()
+
+                    for row in rows:
+                        file_path = row[0]
+                        base64_content = row[1]
+                        filename = file_path.split('/')[-1]
+
+                        if filename.lower().endswith('.pdf'):
+                            result.append({
+                                'type': 'document',
+                                'source': {
+                                    'type': 'base64',
+                                    'media_type': 'application/pdf',
+                                    'data': base64_content
+                                }
+                            })
+                        else:
+                            # Decode base64 for text files
+                            text_bytes = base64.b64decode(base64_content)
+                            result.append({
+                                'type': 'text',
+                                'text': f"[Document: {filename}]\n\n{text_bytes.decode('utf-8')}"
+                            })
+
+                        logger.info(f"[DOC_SQL] Loaded {filename}")
+
+            elapsed = time.time() - start
+            logger.info(f"[DOC_SQL] Loaded {len(result)} documents in {elapsed:.2f}s")
+
+        except Exception as e:
+            elapsed = time.time() - start
+            logger.error(f"[DOC_SQL] Error loading documents after {elapsed:.2f}s: {e}")
+            # Fall back to empty - don't block the chat
+
+        return result
+
     def format_document_for_llm(self, filename: str, content: bytes) -> Dict:
         """Format document bytes directly for LLM (no volume read needed)"""
         if filename.lower().endswith('.pdf'):
