@@ -169,86 +169,73 @@ async def get_config():
 # Document Chat Functions (Model integration)
 # =============================================================================
 
-def stream_model_with_documents(
+def _stream_with_docs(
     message: str,
-    user_id: str,
-    thread_id: str,
+    doc_contents: List[dict],
     conversation_history: List[dict]
 ):
-    """Stream response from model with document context"""
-    logger.info(f"[DOC_CHAT] Starting stream_model_with_documents for thread={thread_id}, user={user_id}")
-
-    # Load documents for this thread
-    doc_contents = document_service.load_documents_for_model(user_id, thread_id)
-    logger.info(f"[DOC_CHAT] Loaded {len(doc_contents)} documents from volume")
-
-    # Build messages array with documents
+    """Stream response with documents prepended (for reload case)"""
     messages = []
 
     # Add document context as first user message
     if doc_contents:
-        doc_message_content = []
-        for i, doc in enumerate(doc_contents):
-            doc_message_content.append(doc)
-            doc_type = doc.get('type', 'unknown')
-            if doc_type == 'document':
-                media_type = doc.get('source', {}).get('media_type', 'unknown')
-                data_len = len(doc.get('source', {}).get('data', ''))
-                logger.info(f"[DOC_CHAT] Document {i+1}: type={doc_type}, media_type={media_type}, base64_len={data_len}")
-            else:
-                text_len = len(doc.get('text', ''))
-                logger.info(f"[DOC_CHAT] Document {i+1}: type={doc_type}, text_len={text_len}")
-        doc_message_content.append({
+        doc_message_content = doc_contents + [{
             'type': 'text',
             'text': 'I have uploaded the above documents. Please use them to answer my questions.'
-        })
-        messages.append({
-            'role': 'user',
-            'content': doc_message_content
-        })
-        # Add assistant acknowledgment
+        }]
+        messages.append({'role': 'user', 'content': doc_message_content})
         messages.append({
             'role': 'assistant',
-            'content': 'I have received and reviewed the documents you uploaded. I will use them to answer your questions. What would you like to know?'
+            'content': 'I have received and reviewed the documents. What would you like to know?'
         })
 
     # Add conversation history
     for msg in conversation_history:
-        messages.append({
-            'role': msg.get('role', 'user'),
-            'content': msg.get('content', '')
-        })
+        messages.append({'role': msg.get('role', 'user'), 'content': msg.get('content', '')})
 
     # Add current message
-    messages.append({
-        'role': 'user',
-        'content': message
-    })
+    messages.append({'role': 'user', 'content': message})
 
-    logger.info(f"[DOC_CHAT] Total messages in request: {len(messages)}")
-    logger.info(f"[DOC_CHAT] Calling model={DATABRICKS_DOCUMENT_MODEL} with streaming=True")
+    logger.info(f"[DOC_STREAM] Calling model with {len(messages)} messages, {len(doc_contents)} docs")
 
-    # Call model via document_service client
-    try:
-        client = document_service.model_client
-        logger.info(f"[DOC_CHAT] Model client base_url={client.base_url}")
-        response = client.chat.completions.create(
-            model=DATABRICKS_DOCUMENT_MODEL,
-            messages=messages,
-            stream=True
-        )
-        logger.info(f"[DOC_CHAT] Model request sent successfully, streaming response...")
+    client = document_service.model_client
+    response = client.chat.completions.create(
+        model=DATABRICKS_DOCUMENT_MODEL,
+        messages=messages,
+        stream=True
+    )
 
-        chunk_count = 0
-        for chunk in response:
-            if chunk.choices and chunk.choices[0].delta.content:
-                chunk_count += 1
-                yield chunk.choices[0].delta.content
+    for chunk in response:
+        if chunk.choices and chunk.choices[0].delta.content:
+            yield chunk.choices[0].delta.content
 
-        logger.info(f"[DOC_CHAT] Streaming complete, received {chunk_count} chunks")
-    except Exception as e:
-        logger.error(f"[DOC_CHAT] ERROR calling model: {type(e).__name__}: {e}")
-        raise
+
+def _stream_without_reload(
+    message: str,
+    conversation_history: List[dict]
+):
+    """Stream response for continuing doc chat (docs already in conversation context)"""
+    messages = []
+
+    # Add conversation history (which already contains the document context)
+    for msg in conversation_history:
+        messages.append({'role': msg.get('role', 'user'), 'content': msg.get('content', '')})
+
+    # Add current message
+    messages.append({'role': 'user', 'content': message})
+
+    logger.info(f"[DOC_STREAM] Continuing doc chat with {len(messages)} messages (no reload)")
+
+    client = document_service.model_client
+    response = client.chat.completions.create(
+        model=DATABRICKS_DOCUMENT_MODEL,
+        messages=messages,
+        stream=True
+    )
+
+    for chunk in response:
+        if chunk.choices and chunk.choices[0].delta.content:
+            yield chunk.choices[0].delta.content
 
 
 async def _handle_document_chat(
@@ -256,7 +243,8 @@ async def _handle_document_chat(
     thread_id: str,
     user_id: str,
     conversation_history: List[dict],
-    use_streaming: bool
+    use_streaming: bool,
+    reload_documents: bool = False  # New parameter
 ):
     """Handle chat with document context via Claude"""
     # Save user message
@@ -276,15 +264,28 @@ async def _handle_document_chat(
 
                 full_response_parts = []
 
-                # Stream from Claude
-                for content in stream_model_with_documents(
-                    message=message_text,
-                    user_id=user_id,
-                    thread_id=thread_id,
-                    conversation_history=conversation_history
-                ):
-                    full_response_parts.append(content)
-                    yield f"data: {json.dumps({'content': content})}\n\n"
+                # Only reload documents if returning to old thread
+                if reload_documents:
+                    logger.info(f"[DOC_CHAT] Reloading documents for old thread {thread_id}")
+                    doc_contents = document_service.load_documents_via_sql(user_id, thread_id)
+
+                    # Stream from model with reloaded documents
+                    for content in _stream_with_docs(
+                        message=message_text,
+                        doc_contents=doc_contents,
+                        conversation_history=conversation_history
+                    ):
+                        full_response_parts.append(content)
+                        yield f"data: {json.dumps({'content': content})}\n\n"
+                else:
+                    # Documents already in conversation context, just continue
+                    logger.info(f"[DOC_CHAT] Continuing doc chat (docs in context)")
+                    for content in _stream_without_reload(
+                        message=message_text,
+                        conversation_history=conversation_history
+                    ):
+                        full_response_parts.append(content)
+                        yield f"data: {json.dumps({'content': content})}\n\n"
 
                 # Save assistant message
                 full_response = ''.join(full_response_parts)
@@ -314,16 +315,13 @@ async def _handle_document_chat(
             }
         )
     else:
-        # Non-streaming mode
+        # Non-streaming mode (simplified)
         try:
-            full_response_parts = []
-            for content in stream_model_with_documents(
-                message=message_text,
-                user_id=user_id,
-                thread_id=thread_id,
-                conversation_history=conversation_history
-            ):
-                full_response_parts.append(content)
+            if reload_documents:
+                doc_contents = document_service.load_documents_via_sql(user_id, thread_id)
+                full_response_parts = list(_stream_with_docs(message_text, doc_contents, conversation_history))
+            else:
+                full_response_parts = list(_stream_without_reload(message_text, conversation_history))
 
             full_response = ''.join(full_response_parts)
 
