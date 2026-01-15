@@ -6,6 +6,7 @@ import 'package:loading_animation_widget/loading_animation_widget.dart';
 import 'package:animated_text_kit/animated_text_kit.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:logging/logging.dart';
+import 'package:file_selector/file_selector.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/gradients.dart';
 import 'dart:js_interop';
@@ -23,7 +24,8 @@ import '../../settings/providers/settings_provider.dart';
 import '../../../core/services/fastapi_service.dart';
 import 'chat_history_page.dart';
 import 'widgets/welcome_hero_screen.dart';
-// Removed TTS text cleaner - now handled by backend LLM
+import 'widgets/document_chip.dart';
+import '../providers/documents_provider.dart';
 
 class ChatHomePage extends ConsumerStatefulWidget {
   const ChatHomePage({super.key});
@@ -132,6 +134,9 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
 
       // Show welcome screen again
       _showWelcomeScreen = true;
+
+      // Clear documents
+      ref.read(documentsProvider.notifier).clear();
     });
 
     // Show confirmation snackbar
@@ -173,7 +178,7 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
     }
   }
 
-  void _loadThreadConversation(String? threadId, List<Map<String, dynamic>> messages) {
+  void _loadThreadConversation(String? threadId, List<Map<String, dynamic>> messages) async {
     if (threadId == null || threadId == 'null') {
       // Start new thread
       _createNewThread();
@@ -254,6 +259,17 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
       }
     });
 
+    // Load documents for this thread if any
+    final docs = await FastApiService.getThreadDocuments(threadId);
+    ref.read(documentsProvider.notifier).loadFromBackend(docs);
+
+    // Update endpoint if documents present
+    if (docs.isNotEmpty) {
+      setState(() {
+        _currentAgentEndpoint = 'claude-opus-4-5';
+      });
+    }
+
     // Scroll to bottom after loading
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scrollToBottom();
@@ -263,6 +279,60 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
   void _sendMessage({String? text}) async {
     final messageText = text ?? _messageController.text.trim();
     if (messageText.isEmpty) return;
+
+    // Upload any pending documents first
+    final pendingDocs = ref.read(documentsProvider.notifier).pendingUploads;
+    if (pendingDocs.isNotEmpty) {
+      // Mark as uploading
+      for (final doc in pendingDocs) {
+        ref.read(documentsProvider.notifier).setUploading(doc.filename, true);
+      }
+
+      // Upload to backend
+      final uploadResult = await FastApiService.uploadDocuments(
+        files: pendingDocs.map((doc) => {
+          'filename': doc.filename,
+          'bytes': doc.bytes!,
+        }).toList(),
+        threadId: _currentThreadId,
+      );
+
+      if (uploadResult.containsKey('error')) {
+        // Handle upload error
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Upload failed: ${uploadResult['error']}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        // Reset uploading state
+        for (final doc in pendingDocs) {
+          ref.read(documentsProvider.notifier).setUploading(doc.filename, false);
+        }
+        return;
+      }
+
+      // Update thread ID if new
+      _currentThreadId = uploadResult['thread_id'];
+
+      // Mark documents as uploaded
+      final uploadedDocs = uploadResult['documents'] as List<dynamic>? ?? [];
+      for (final doc in uploadedDocs) {
+        ref.read(documentsProvider.notifier).markUploaded(
+          doc['filename'],
+          DateTime.now().toIso8601String(),
+        );
+      }
+
+      // Update endpoint display
+      if (uploadResult['endpoint'] != null) {
+        setState(() {
+          _currentAgentEndpoint = uploadResult['endpoint'];
+        });
+      }
+    }
 
     final message = ChatMessage(
       id: 'user_${DateTime.now().millisecondsSinceEpoch}',
@@ -560,6 +630,41 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
         });
         _scrollToBottom();
       }
+    }
+  }
+
+  Future<void> _pickDocuments() async {
+    final typeGroup = XTypeGroup(
+      label: 'Documents',
+      extensions: ['pdf', 'txt'],
+    );
+
+    final files = await openFiles(acceptedTypeGroups: [typeGroup]);
+
+    if (files.isEmpty) return;
+
+    for (final file in files) {
+      final bytes = await file.readAsBytes();
+      final size = bytes.length;
+
+      // Validate size (10MB limit)
+      if (size > 10 * 1024 * 1024) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('${file.name} is too large (max 10MB)'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        continue;
+      }
+
+      ref.read(documentsProvider.notifier).addDocument(
+        file.name,
+        size,
+        bytes,
+      );
     }
   }
 
@@ -1551,6 +1656,30 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
             const SizedBox(height: AppConstants.spacingSm),
           ],
 
+          // Document chips (when files are staged/uploaded)
+          Consumer(
+            builder: (context, ref, _) {
+              final documents = ref.watch(documentsProvider);
+              if (documents.isEmpty) return const SizedBox.shrink();
+
+              return Padding(
+                padding: const EdgeInsets.only(bottom: AppConstants.spacingSm),
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: documents.map((doc) => DocumentChip(
+                    filename: doc.filename,
+                    size: doc.size,
+                    isLoading: doc.isUploading,
+                    onRemove: doc.isUploading ? null : () {
+                      ref.read(documentsProvider.notifier).removeDocument(doc.filename);
+                    },
+                  )).toList(),
+                ),
+              );
+            },
+          ),
+
           // Agent endpoint display (always visible in bottom right)
           Align(
             alignment: Alignment.centerRight,
@@ -1567,6 +1696,14 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
                   focusNode: _messageInputFocus,
                   decoration: InputDecoration(
                     hintText: 'Type a message...',
+                    prefixIcon: IconButton(
+                      onPressed: _pickDocuments,
+                      icon: Icon(
+                        Icons.attach_file,
+                        color: context.appColors.mutedForeground,
+                      ),
+                      tooltip: 'Attach document (PDF, TXT)',
+                    ),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(AppConstants.radiusLg),
                       borderSide: BorderSide(
