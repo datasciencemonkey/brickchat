@@ -49,6 +49,9 @@ env:
   - name: DOCUMENTS_VOLUME_PATH
     value: "/Volumes/serverless_9cefok_catalog/sgfs/data/brickchat/"
 
+  - name: DATABRICKS_DOCUMENT_MODEL
+    value: 'databricks-claude-sonnet-4-5'
+
 # App resources - secrets the app's service principal can access
 resources:
   - name: DATABRICKS_TOKEN

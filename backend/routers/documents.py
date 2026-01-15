@@ -54,9 +54,9 @@ async def upload_documents(
         if not valid:
             raise HTTPException(status_code=400, detail=error_msg)
 
-        # Save document
+        # Save document (async to avoid blocking event loop)
         try:
-            doc_info = document_service.save_document(
+            doc_info = await document_service.save_document_async(
                 user_id=user_id,
                 thread_id=thread_id,
                 filename=file.filename,
@@ -81,7 +81,7 @@ async def list_documents(
     user: UserContext = Depends(get_current_user)
 ):
     """List all documents for a thread"""
-    documents = document_service.list_documents(user.user_id, thread_id)
+    documents = await document_service.list_documents_async(user.user_id, thread_id)
     return {"documents": documents}
 
 
@@ -92,7 +92,7 @@ async def delete_document(
     user: UserContext = Depends(get_current_user)
 ):
     """Delete a specific document from a thread"""
-    success = document_service.delete_document(user.user_id, thread_id, filename)
+    success = await document_service.delete_document_async(user.user_id, thread_id, filename)
     if not success:
         raise HTTPException(status_code=404, detail="Document not found")
     return {"status": "deleted", "filename": filename}
