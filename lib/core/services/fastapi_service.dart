@@ -350,4 +350,86 @@ class FastApiService {
       return {'agent_endpoint': 'Unknown'};
     }
   }
+
+  /// Upload documents to the backend
+  /// Returns thread_id and list of uploaded documents
+  static Future<Map<String, dynamic>> uploadDocuments({
+    required List<Map<String, dynamic>> files, // [{filename, bytes}]
+    String? threadId,
+  }) async {
+    try {
+      final url = Uri.parse('$baseUrl/api/documents/upload');
+
+      var request = http.MultipartRequest('POST', url);
+
+      // Add thread_id if provided
+      if (threadId != null) {
+        request.fields['thread_id'] = threadId;
+      }
+
+      // Add files
+      for (final file in files) {
+        request.files.add(http.MultipartFile.fromBytes(
+          'files',
+          file['bytes'] as List<int>,
+          filename: file['filename'] as String,
+        ));
+      }
+
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        return {
+          'error': 'Upload failed: ${response.statusCode} - ${response.body}',
+        };
+      }
+    } catch (e) {
+      return {
+        'error': 'Error uploading documents: $e',
+      };
+    }
+  }
+
+  /// Get documents for a thread
+  static Future<List<Map<String, dynamic>>> getThreadDocuments(String threadId) async {
+    try {
+      final url = Uri.parse('$baseUrl/api/documents/$threadId');
+
+      final response = await http.get(
+        url,
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return List<Map<String, dynamic>>.from(data['documents'] ?? []);
+      } else {
+        print('Error fetching documents: ${response.statusCode}');
+        return [];
+      }
+    } catch (e) {
+      print('Error fetching documents: $e');
+      return [];
+    }
+  }
+
+  /// Delete a document from a thread
+  static Future<bool> deleteDocument(String threadId, String filename) async {
+    try {
+      final url = Uri.parse('$baseUrl/api/documents/$threadId/$filename');
+
+      final response = await http.delete(
+        url,
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      return response.statusCode == 200;
+    } catch (e) {
+      print('Error deleting document: $e');
+      return false;
+    }
+  }
 }
