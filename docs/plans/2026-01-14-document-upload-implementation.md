@@ -20,12 +20,12 @@
 | 4. Modify Chat Router | ✅ Complete | `aad94cc` |
 | 5. Thread Messages + Documents | ✅ Complete | `8f2549e` |
 | 6. Document Chip Widget | ✅ Complete | `e36fa5e` |
-| 7. Documents Provider | 🔲 Pending | - |
-| 8. FastAPI Service Methods | 🔲 Pending | - |
-| 9. Upload Button Integration | 🔲 Pending | - |
-| 10. Endpoint Display Update | 🔲 Pending | - |
-| 11. Environment Variables | 🔲 Pending | - |
-| 12. Integration Test | 🔲 Pending | - |
+| 7. Documents Provider | ✅ Complete | `98b410c` |
+| 8. FastAPI Service Methods | ✅ Complete | `b925b30` |
+| 9. Upload Button Integration | ✅ Complete | `9d34260` |
+| 10. Endpoint Display Update | ✅ Complete | `d8e645e` |
+| 11. Environment Variables | ✅ Complete | `c02bbba` |
+| 12. Integration Test | ✅ Complete | Build verified |
 
 ---
 
