@@ -2,17 +2,54 @@
 
 A production-ready AI chat interface for Databricks serving endpoints. Deploy as a Databricks App with SSO authentication, persistent conversations, and enterprise features.
 
-## What BrickChat Does
+## Features
 
-BrickChat provides a complete chat experience for interacting with AI agents hosted on Databricks:
+### AI Chat
+- **Multi-threaded conversations** with full history and search
+- **Real-time streaming responses** (word-by-word) with typing indicators
+- **Reasoning display** with collapsible `<think>` sections for AI transparency
+- **Citation extraction** with footnotes and expandable sources accordion
+- **Message feedback** (like/dislike) with persistence
+- **Copy to clipboard** for any message
+- **Markdown rendering** with code syntax highlighting
 
-- **Connects to Databricks AI serving endpoints** using OpenAI-compatible API format
-- **Streams responses in real-time** with Server-Sent Events (SSE)
-- **Persists all conversations** to PostgreSQL with thread management and search
-- **Authenticates users automatically** via Databricks Apps on-behalf-of flow
-- **Supports voice input** with browser-native speech-to-text
-- **Provides text-to-speech** playback via Deepgram or Replicate APIs
-- **TalkToMyPDF**: Upload and chat with PDF/TXT documents using multimodal AI
+### Voice & Audio
+- **Speech-to-text input** with configurable keyboard shortcuts (Alt+V/A/M)
+- **Text-to-Speech playback** with 30+ voice options
+  - Deepgram Aura: 13 voices (Thalia, Asteria, Luna, Stella, Athena, Hera, Orion, Arcas, Perseus, Angus, Orpheus, Helios, Zeus)
+  - Replicate Kokoro: 18+ voices (male and female variants)
+- **Streaming audio** with play/pause/stop controls
+- **Download audio files** for offline use
+- **Eager mode** for automatic TTS playback after responses
+
+### Document Intelligence (TalkToMyPDF)
+- **Multi-file upload** supporting PDF and TXT formats
+- **Unity Catalog volume storage** for secure, governed document management
+- **Per-thread document management** with isolation per user
+- **Chat with your documents** using multimodal AI (Claude Sonnet 4.5)
+- **File limits**: 10MB per file, 10 files max per thread
+
+### Theme & Design
+- **Light / Dark / System themes** with automatic detection
+- **Databricks-branded Material 3 design** system
+- **Animated particle background** in dark mode (120 particles)
+- **DM Sans typography** for clean, professional appearance
+- **Responsive layout** optimized for desktop and web
+- **Smooth theme transitions** (300ms animations)
+
+### Enterprise Ready
+- **On-behalf-of authentication** via Databricks Apps headers
+- **PostgreSQL persistence** with connection pooling
+- **User-isolated threads & documents** for data privacy
+- **OpenAI-compatible Databricks endpoints** for flexible model deployment
+- **Unity Catalog integration** for governed data access
+
+### Developer Experience
+- **Flutter Web (WASM)** for high-performance frontend
+- **FastAPI backend** with async support
+- **SSE streaming architecture** for real-time updates
+- **Clean Architecture** with Riverpod state management
+- **Full CORS & deployment support** for production environments
 
 ## Architecture
 
@@ -148,38 +185,6 @@ psql -h $PGHOST -U $PGUSER -d $PGDATABASE -f deployment/schema.sql
 ```
 
 See [deployment/postgres_setup.md](deployment/postgres_setup.md) for detailed setup instructions.
-
-## Features
-
-### Chat
-- Real-time streaming responses with typing indicators
-- Conversation threading with history and search
-- Message feedback (like/dislike) with persistence
-- Markdown rendering with code syntax highlighting
-- Collapsible reasoning sections for AI transparency
-
-### TalkToMyPDF (Document Q&A)
-- Upload PDF and TXT files (up to 10MB each, max 10 per thread)
-- Documents stored securely in Unity Catalog volumes
-- Chat with your documents using multimodal AI (Claude Sonnet 4.5)
-- Per-user, per-thread document isolation
-- Automatic document context injection into conversations
-
-### Voice & Audio
-- Speech-to-text via browser Web Speech API
-- Text-to-speech with 18+ voice options (Deepgram Aura, Replicate Kokoro)
-- Eager mode for automatic TTS playback
-
-### Interface
-- Light and dark themes with system preference detection
-- Responsive design for web and desktop
-- Professional Databricks-inspired branding
-
-### Enterprise
-- SSO authentication via Databricks Apps headers
-- On-behalf-of API calls with user context
-- PostgreSQL-backed persistence with connection pooling
-- Unity Catalog integration for secure document storage
 
 ## Project Structure
 
