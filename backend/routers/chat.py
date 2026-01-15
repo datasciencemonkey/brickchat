@@ -343,12 +343,22 @@ async def get_user_threads(user: UserContext = Depends(get_current_user)):
 async def get_thread_messages(
     thread_id: str,
     limit: int = Query(default=None, ge=1, le=500, description="Maximum messages to return (default: all)"),
-    offset: int = Query(default=0, ge=0, description="Number of messages to skip")
+    offset: int = Query(default=0, ge=0, description="Number of messages to skip"),
+    user: UserContext = Depends(get_current_user)
 ):
-    """Get messages for a specific thread with optional pagination"""
+    """Get messages for a specific thread with optional pagination and document metadata"""
     try:
         messages = chat_db.get_thread_messages(thread_id, limit=limit, offset=offset)
-        return {"messages": messages, "limit": limit, "offset": offset}
+
+        # Check for documents in this thread
+        documents = document_service.list_documents(user.user_id, thread_id)
+
+        return {
+            "messages": messages,
+            "limit": limit,
+            "offset": offset,
+            "documents": documents  # Include document metadata
+        }
     except Exception as e:
         logger.error(f"Error fetching thread messages: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch messages: {str(e)}")
