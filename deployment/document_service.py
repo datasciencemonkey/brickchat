@@ -4,15 +4,22 @@ import io
 import json
 import base64
 import logging
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import List, Dict, Optional, Tuple
 from pathlib import Path
 from dotenv import load_dotenv
 from openai import OpenAI
 from databricks.sdk import WorkspaceClient
+from databricks import sql as databricks_sql
 
 # Load environment variables before accessing them
 load_dotenv()
+
+# SQL Warehouse configuration
+SQL_WAREHOUSE_HOSTNAME = os.environ.get('HOSTNAME', '').replace('https://', '')
+SQL_WAREHOUSE_HTTP_PATH = os.environ.get('HTTP_PATH', '')
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +40,9 @@ IS_VOLUME_PATH = DOCUMENTS_VOLUME_PATH.startswith('/Volumes/')
 MAX_FILES_PER_THREAD = 10
 MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024  # 10MB
 ALLOWED_EXTENSIONS = {'.pdf', '.txt'}
+
+# Thread pool executor for async operations (Databricks SDK is synchronous)
+_executor = ThreadPoolExecutor(max_workers=4)
 
 
 class DocumentService:
@@ -58,9 +68,19 @@ class DocumentService:
         if self._workspace_client is None:
             self._workspace_client = WorkspaceClient(
                 host=DATABRICKS_HOST,
-                token=DATABRICKS_TOKEN
+                token=DATABRICKS_TOKEN,
+                auth_type="pat"  # Force PAT to avoid conflict with auto-detected OAuth
             )
         return self._workspace_client
+
+    @property
+    def sql_connection(self):
+        """Get Databricks SQL connection for fast file reads"""
+        return databricks_sql.connect(
+            server_hostname=SQL_WAREHOUSE_HOSTNAME,
+            http_path=SQL_WAREHOUSE_HTTP_PATH,
+            access_token=DATABRICKS_TOKEN
+        )
 
     def get_thread_documents_path(self, user_id: str, thread_id: str) -> str:
         """Get the path to a thread's document directory"""
@@ -73,6 +93,20 @@ class DocumentService:
     def _get_metadata_path(self, user_id: str, thread_id: str) -> str:
         """Get the path to the metadata.json file"""
         return f"{self.get_thread_documents_path(user_id, thread_id)}/metadata.json"
+
+    def _ensure_directory_exists(self, dir_path: str):
+        """Create directory in Unity Catalog volume or local filesystem if it doesn't exist"""
+        if IS_VOLUME_PATH:
+            try:
+                self.workspace_client.files.create_directory(dir_path)
+                logger.info(f"Created directory: {dir_path}")
+            except Exception as e:
+                # Directory might already exist - that's OK (create_directory is idempotent)
+                error_str = str(e).lower()
+                if 'already exists' not in error_str and 'resource_already_exists' not in error_str:
+                    logger.warning(f"Directory creation note for {dir_path}: {e}")
+        else:
+            Path(dir_path).mkdir(parents=True, exist_ok=True)
 
     def validate_file(self, filename: str, size: int) -> Tuple[bool, str]:
         """Validate file against limits"""
@@ -95,6 +129,10 @@ class DocumentService:
         existing_docs = self.list_documents(user_id, thread_id)
         if len(existing_docs) >= MAX_FILES_PER_THREAD:
             raise ValueError(f"Maximum {MAX_FILES_PER_THREAD} documents per thread exceeded")
+
+        # Ensure user/thread directory exists before upload
+        thread_dir = self.get_thread_documents_path(user_id, thread_id)
+        self._ensure_directory_exists(thread_dir)
 
         file_path = self._get_file_path(user_id, thread_id, filename)
 
@@ -132,8 +170,14 @@ class DocumentService:
 
     def list_documents(self, user_id: str, thread_id: str) -> List[Dict]:
         """List all documents for a thread"""
+        import time
+        start = time.time()
+        logger.info(f"[DOC_SVC] list_documents called for user={user_id}, thread={thread_id}")
         metadata = self._load_metadata(user_id, thread_id)
+        elapsed = time.time() - start
+        logger.info(f"[DOC_SVC] _load_metadata completed in {elapsed:.2f}s")
         docs = metadata.get('documents', {})
+        logger.info(f"[DOC_SVC] Found {len(docs)} documents in metadata")
         return [
             {
                 'filename': fname,
@@ -175,15 +219,55 @@ class DocumentService:
 
     def thread_has_documents(self, user_id: str, thread_id: str) -> bool:
         """Check if a thread has any documents"""
-        return len(self.list_documents(user_id, thread_id)) > 0
+        logger.info(f"[DOC_SVC] thread_has_documents called for user={user_id}, thread={thread_id}")
+        result = len(self.list_documents(user_id, thread_id)) > 0
+        logger.info(f"[DOC_SVC] thread_has_documents returning {result}")
+        return result
 
     def _read_file_content(self, file_path: str) -> Optional[bytes]:
         """Read file content from Unity Catalog volume or local filesystem"""
+        import time
+        logger.info(f"[DOC_SVC] _read_file_content called for {file_path}")
         try:
             if IS_VOLUME_PATH:
-                # Use Databricks SDK to download from Unity Catalog volume
-                response = self.workspace_client.files.download(file_path)
-                return response.contents.read()
+                # Check if file exists FIRST (fast check, avoids 5-minute timeout on download)
+                logger.info(f"[DOC_SVC] Checking file metadata (existence check)...")
+                start = time.time()
+                try:
+                    self.workspace_client.files.get_metadata(file_path)
+                    elapsed = time.time() - start
+                    logger.info(f"[DOC_SVC] File exists, metadata check took {elapsed:.2f}s")
+                except Exception as e:
+                    elapsed = time.time() - start
+                    error_str = str(e).lower()
+                    if 'not found' in error_str or '404' in str(e) or 'does not exist' in error_str:
+                        logger.info(f"[DOC_SVC] File does not exist (checked in {elapsed:.2f}s): {file_path}")
+                        return None  # Return immediately - no timeout
+                    logger.error(f"[DOC_SVC] Metadata check error after {elapsed:.2f}s: {e}")
+                    raise  # Re-raise other errors
+
+                # File exists, now download it with timeout
+                logger.info(f"[DOC_SVC] Downloading file...")
+                start = time.time()
+
+                # Use a timeout to prevent infinite blocking
+                from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+
+                def do_download():
+                    response = self.workspace_client.files.download(file_path)
+                    return response.contents.read()
+
+                try:
+                    with ThreadPoolExecutor(max_workers=1) as download_executor:
+                        future = download_executor.submit(do_download)
+                        content = future.result(timeout=30)  # 30 second timeout
+                    elapsed = time.time() - start
+                    logger.info(f"[DOC_SVC] Download completed in {elapsed:.2f}s, size={len(content)}")
+                    return content
+                except FuturesTimeoutError:
+                    elapsed = time.time() - start
+                    logger.error(f"[DOC_SVC] Download TIMEOUT after {elapsed:.2f}s for {file_path}")
+                    return None
             else:
                 # Use local filesystem
                 local_path = Path(file_path)
@@ -192,7 +276,12 @@ class DocumentService:
                         return f.read()
                 return None
         except Exception as e:
-            logger.error(f"Failed to read file {file_path}: {e}")
+            # Check if this is a "file not found" error (expected for new threads)
+            error_str = str(e).lower()
+            if 'not found' in error_str or 'nosuchkey' in error_str or 'does not exist' in error_str:
+                logger.debug(f"File does not exist: {file_path}")
+            else:
+                logger.error(f"[DOC_SVC] Failed to read file {file_path}: {e}")
             return None
 
     def load_documents_for_model(self, user_id: str, thread_id: str) -> List[Dict]:
@@ -224,10 +313,51 @@ class DocumentService:
 
         return result
 
+    def format_document_for_llm(self, filename: str, content: bytes) -> Dict:
+        """Format document bytes directly for LLM (no volume read needed)"""
+        if filename.lower().endswith('.pdf'):
+            return {
+                'type': 'document',
+                'source': {
+                    'type': 'base64',
+                    'media_type': 'application/pdf',
+                    'data': base64.b64encode(content).decode('utf-8')
+                }
+            }
+        else:  # .txt or other text files
+            return {
+                'type': 'text',
+                'text': f"[Document: {filename}]\n\n{content.decode('utf-8')}"
+            }
+
+    async def save_documents_background(
+        self,
+        user_id: str,
+        thread_id: str,
+        files: List[Tuple[str, bytes]]
+    ):
+        """Save documents to volume in background (fire-and-forget)"""
+        loop = asyncio.get_event_loop()
+        for filename, content in files:
+            try:
+                await loop.run_in_executor(
+                    _executor,
+                    self.save_document,
+                    user_id, thread_id, filename, content
+                )
+                logger.info(f"[BACKGROUND] Saved document to volume: {filename}")
+            except Exception as e:
+                logger.error(f"[BACKGROUND] Failed to save {filename}: {e}")
+
     def _load_metadata(self, user_id: str, thread_id: str) -> Dict:
         """Load metadata.json for a thread"""
+        import time
         metadata_path = self._get_metadata_path(user_id, thread_id)
+        logger.info(f"[DOC_SVC] _load_metadata reading from {metadata_path}")
+        start = time.time()
         content = self._read_file_content(metadata_path)
+        elapsed = time.time() - start
+        logger.info(f"[DOC_SVC] _read_file_content completed in {elapsed:.2f}s, content_size={len(content) if content else 0}")
         if content is not None:
             try:
                 return json.loads(content.decode('utf-8'))
@@ -253,6 +383,46 @@ class DocumentService:
             local_path.parent.mkdir(parents=True, exist_ok=True)
             with open(local_path, 'w') as f:
                 f.write(content.decode('utf-8'))
+
+    # Async wrappers for FastAPI endpoints (Databricks SDK is synchronous)
+    async def save_document_async(
+        self,
+        user_id: str,
+        thread_id: str,
+        filename: str,
+        content: bytes
+    ) -> Dict:
+        """Async wrapper for save_document using run_in_executor"""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            _executor,
+            self.save_document,
+            user_id,
+            thread_id,
+            filename,
+            content
+        )
+
+    async def list_documents_async(self, user_id: str, thread_id: str) -> List[Dict]:
+        """Async wrapper for list_documents"""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            _executor,
+            self.list_documents,
+            user_id,
+            thread_id
+        )
+
+    async def delete_document_async(self, user_id: str, thread_id: str, filename: str) -> bool:
+        """Async wrapper for delete_document"""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            _executor,
+            self.delete_document,
+            user_id,
+            thread_id,
+            filename
+        )
 
 
 # Global instance
