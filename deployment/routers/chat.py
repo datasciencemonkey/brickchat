@@ -1,11 +1,12 @@
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException, Depends, Query, Form, File, UploadFile
 from fastapi.responses import StreamingResponse
 from openai import OpenAI
 import os
+import asyncio
 from dotenv import load_dotenv
 import json
 import re
-from typing import List
+from typing import List, Optional
 from database import initialize_database
 from auth import get_current_user, UserContext
 from document_service import document_service, DATABRICKS_DOCUMENT_MODEL
@@ -175,8 +176,11 @@ def stream_model_with_documents(
     conversation_history: List[dict]
 ):
     """Stream response from model with document context"""
+    logger.info(f"[DOC_CHAT] Starting stream_model_with_documents for thread={thread_id}, user={user_id}")
+
     # Load documents for this thread
     doc_contents = document_service.load_documents_for_model(user_id, thread_id)
+    logger.info(f"[DOC_CHAT] Loaded {len(doc_contents)} documents from volume")
 
     # Build messages array with documents
     messages = []
@@ -184,8 +188,16 @@ def stream_model_with_documents(
     # Add document context as first user message
     if doc_contents:
         doc_message_content = []
-        for doc in doc_contents:
+        for i, doc in enumerate(doc_contents):
             doc_message_content.append(doc)
+            doc_type = doc.get('type', 'unknown')
+            if doc_type == 'document':
+                media_type = doc.get('source', {}).get('media_type', 'unknown')
+                data_len = len(doc.get('source', {}).get('data', ''))
+                logger.info(f"[DOC_CHAT] Document {i+1}: type={doc_type}, media_type={media_type}, base64_len={data_len}")
+            else:
+                text_len = len(doc.get('text', ''))
+                logger.info(f"[DOC_CHAT] Document {i+1}: type={doc_type}, text_len={text_len}")
         doc_message_content.append({
             'type': 'text',
             'text': 'I have uploaded the above documents. Please use them to answer my questions.'
@@ -213,17 +225,30 @@ def stream_model_with_documents(
         'content': message
     })
 
-    # Call model via document_service client
-    client = document_service.model_client
-    response = client.chat.completions.create(
-        model=DATABRICKS_DOCUMENT_MODEL,
-        messages=messages,
-        stream=True
-    )
+    logger.info(f"[DOC_CHAT] Total messages in request: {len(messages)}")
+    logger.info(f"[DOC_CHAT] Calling model={DATABRICKS_DOCUMENT_MODEL} with streaming=True")
 
-    for chunk in response:
-        if chunk.choices and chunk.choices[0].delta.content:
-            yield chunk.choices[0].delta.content
+    # Call model via document_service client
+    try:
+        client = document_service.model_client
+        logger.info(f"[DOC_CHAT] Model client base_url={client.base_url}")
+        response = client.chat.completions.create(
+            model=DATABRICKS_DOCUMENT_MODEL,
+            messages=messages,
+            stream=True
+        )
+        logger.info(f"[DOC_CHAT] Model request sent successfully, streaming response...")
+
+        chunk_count = 0
+        for chunk in response:
+            if chunk.choices and chunk.choices[0].delta.content:
+                chunk_count += 1
+                yield chunk.choices[0].delta.content
+
+        logger.info(f"[DOC_CHAT] Streaming complete, received {chunk_count} chunks")
+    except Exception as e:
+        logger.error(f"[DOC_CHAT] ERROR calling model: {type(e).__name__}: {e}")
+        raise
 
 
 async def _handle_document_chat(
@@ -397,20 +422,26 @@ async def send_message(message: dict, user: UserContext = Depends(get_current_us
             thread_id = chat_db.create_thread(user_id=user_id)
             logger.info(f"Created new thread: {thread_id}")
 
-        # Check if thread has documents - route to Claude if so
+        # Check if thread has documents and whether we need to reload them
         has_documents = False
+        needs_reload = False
         if thread_id:
-            has_documents = document_service.thread_has_documents(user_id, thread_id)
+            logger.info(f"[CHAT] Checking if thread {thread_id} has documents (DB metadata check)")
+            has_documents = chat_db.thread_has_documents(thread_id)
+            if has_documents:
+                needs_reload = chat_db.needs_document_reload(user_id, thread_id)
+            logger.info(f"[CHAT] has_documents={has_documents}, needs_reload={needs_reload}")
 
         if has_documents:
             # Route to Claude with documents
-            logger.info(f"Thread {thread_id} has documents, routing to Claude")
+            logger.info(f"[CHAT] Thread {thread_id} has documents, routing to document chat")
             return await _handle_document_chat(
                 message_text=message_text,
                 thread_id=thread_id,
                 user_id=user_id,
                 conversation_history=conversation_history,
-                use_streaming=use_streaming
+                use_streaming=use_streaming,
+                reload_documents=needs_reload  # New parameter
             )
 
         # Save user message to database
@@ -693,3 +724,144 @@ async def send_message(message: dict, user: UserContext = Depends(get_current_us
             "backend": "databricks",
             "status": "error"
         }
+
+
+# =============================================================================
+# Combined Document + Message Endpoint (Direct LLM Integration)
+# =============================================================================
+
+def stream_model_with_inline_documents(
+    message: str,
+    thread_id: str,
+    user_id: str,
+    doc_contents: List[dict],
+    conversation_history: List[dict]
+):
+    """Stream response with documents passed directly (no volume read)"""
+    messages = []
+
+    # Add documents as first message
+    if doc_contents:
+        doc_message_content = doc_contents + [{
+            'type': 'text',
+            'text': 'I have uploaded the above documents. Please use them to answer my questions.'
+        }]
+        messages.append({'role': 'user', 'content': doc_message_content})
+        messages.append({
+            'role': 'assistant',
+            'content': 'I have received and reviewed the documents. What would you like to know?'
+        })
+
+    # Add conversation history
+    for msg in conversation_history:
+        messages.append({'role': msg.get('role', 'user'), 'content': msg.get('content', '')})
+
+    # Add current message
+    messages.append({'role': 'user', 'content': message})
+
+    logger.info(f"[DOC_INLINE] Calling model with {len(messages)} messages, {len(doc_contents)} inline docs")
+
+    # Call model
+    try:
+        client = document_service.model_client
+        response = client.chat.completions.create(
+            model=DATABRICKS_DOCUMENT_MODEL,
+            messages=messages,
+            stream=True
+        )
+
+        # Yield metadata first
+        yield f"data: {json.dumps({'metadata': {'thread_id': thread_id, 'user_id': user_id, 'agent_endpoint': DATABRICKS_DOCUMENT_MODEL}})}\n\n"
+
+        full_response_parts = []
+        for chunk in response:
+            if chunk.choices and chunk.choices[0].delta.content:
+                content = chunk.choices[0].delta.content
+                full_response_parts.append(content)
+                yield f"data: {json.dumps({'content': content})}\n\n"
+
+        # Save assistant message
+        full_response = ''.join(full_response_parts)
+        if full_response:
+            assistant_message_id = chat_db.save_message(
+                thread_id=thread_id,
+                user_id=user_id,
+                message_role="assistant",
+                message_content=full_response,
+                agent_endpoint=DATABRICKS_DOCUMENT_MODEL
+            )
+            yield f"data: {json.dumps({'assistant_message_id': assistant_message_id})}\n\n"
+
+        yield f"data: {json.dumps({'done': True})}\n\n"
+
+    except Exception as e:
+        logger.error(f"[DOC_INLINE] ERROR: {e}")
+        yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+
+@router.post("/send-with-documents")
+async def send_message_with_documents(
+    message: str = Form(...),
+    files: List[UploadFile] = File(default=[]),
+    thread_id: Optional[str] = Form(None),
+    conversation_history: Optional[str] = Form(None),  # JSON string
+    user: UserContext = Depends(get_current_user)
+):
+    """
+    Combined endpoint: accepts documents + message, sends directly to LLM.
+    Documents are saved to volume in background for session recovery.
+    """
+    user_id = user.user_id
+    logger.info(f"[SEND_WITH_DOCS] Received request: message_len={len(message)}, files={len(files)}, thread_id={thread_id}")
+
+    # Create thread if needed (with has_documents flag)
+    if not thread_id:
+        thread_id = chat_db.create_thread(user_id=user_id, metadata={'has_documents': 'true'})
+        logger.info(f"[SEND_WITH_DOCS] Created new thread: {thread_id}")
+    else:
+        # Update existing thread to mark it has documents
+        chat_db.update_thread_has_documents(thread_id, True)
+
+    # Save user message
+    user_message_id = chat_db.save_message(
+        thread_id=thread_id,
+        user_id=user_id,
+        message_role="user",
+        message_content=message,
+        agent_endpoint=DATABRICKS_DOCUMENT_MODEL
+    )
+
+    # Read and format documents for LLM (in memory)
+    doc_contents = []
+    files_for_save = []
+    for file in files:
+        content = await file.read()
+        doc_contents.append(document_service.format_document_for_llm(file.filename, content))
+        files_for_save.append((file.filename, content))
+        logger.info(f"[SEND_WITH_DOCS] Formatted document: {file.filename}, size={len(content)}")
+
+    # Parse conversation history
+    history = []
+    if conversation_history:
+        try:
+            history = json.loads(conversation_history)
+        except json.JSONDecodeError:
+            logger.warning("[SEND_WITH_DOCS] Failed to parse conversation_history JSON")
+
+    # Start background save (fire-and-forget) - don't block LLM call
+    if files_for_save:
+        asyncio.create_task(
+            document_service.save_documents_background(user_id, thread_id, files_for_save)
+        )
+        logger.info(f"[SEND_WITH_DOCS] Started background save for {len(files_for_save)} files")
+
+    # Stream LLM response with documents passed directly
+    return StreamingResponse(
+        stream_model_with_inline_documents(message, thread_id, user_id, doc_contents, history),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*",
+        }
+    )
