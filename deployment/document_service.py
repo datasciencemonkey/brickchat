@@ -122,13 +122,15 @@ class DocumentService:
         user_id: str,
         thread_id: str,
         filename: str,
-        content: bytes
+        content: bytes,
+        skip_count_check: bool = False  # New parameter for background saves
     ) -> Dict:
         """Save a document to the volume (Unity Catalog or local)"""
-        # Check existing document count
-        existing_docs = self.list_documents(user_id, thread_id)
-        if len(existing_docs) >= MAX_FILES_PER_THREAD:
-            raise ValueError(f"Maximum {MAX_FILES_PER_THREAD} documents per thread exceeded")
+        # Check existing document count (skip for background saves - already validated at upload time)
+        if not skip_count_check:
+            existing_docs = self.list_documents(user_id, thread_id)
+            if len(existing_docs) >= MAX_FILES_PER_THREAD:
+                raise ValueError(f"Maximum {MAX_FILES_PER_THREAD} documents per thread exceeded")
 
         # Ensure user/thread directory exists before upload
         thread_dir = self.get_thread_documents_path(user_id, thread_id)
@@ -285,7 +287,12 @@ class DocumentService:
             return None
 
     def load_documents_for_model(self, user_id: str, thread_id: str) -> List[Dict]:
-        """Load documents formatted for model API"""
+        """
+        DEPRECATED: Use load_documents_via_sql() instead for faster loading.
+        This method uses the slow SDK download which can timeout.
+        Kept for backward compatibility only.
+        """
+        logger.warning("[DOC_SVC] load_documents_for_model is deprecated, use load_documents_via_sql")
         documents = self.list_documents(user_id, thread_id)
         result = []
 
@@ -401,14 +408,17 @@ class DocumentService:
         files: List[Tuple[str, bytes]]
     ):
         """Save documents to volume in background (fire-and-forget)"""
+        from functools import partial
         loop = asyncio.get_event_loop()
         for filename, content in files:
             try:
-                await loop.run_in_executor(
-                    _executor,
+                # Use partial to pass skip_count_check=True (avoids slow list_documents call)
+                save_func = partial(
                     self.save_document,
-                    user_id, thread_id, filename, content
+                    user_id, thread_id, filename, content,
+                    skip_count_check=True
                 )
+                await loop.run_in_executor(_executor, save_func)
                 logger.info(f"[BACKGROUND] Saved document to volume: {filename}")
             except Exception as e:
                 logger.error(f"[BACKGROUND] Failed to save {filename}: {e}")
