@@ -384,8 +384,9 @@ class FastApiService {
     }
   }
 
-  /// Fetch all messages for a specific thread
-  static Future<List<Map<String, dynamic>>> getThreadMessages(String threadId) async {
+  /// Fetch all messages and documents for a specific thread
+  /// Returns a map with 'messages' and 'documents' arrays
+  static Future<Map<String, dynamic>> getThreadMessages(String threadId) async {
     try {
       final url = Uri.parse('$baseUrl/api/chat/threads/$threadId/messages');
 
@@ -396,14 +397,17 @@ class FastApiService {
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        return List<Map<String, dynamic>>.from(data['messages'] ?? []);
+        return {
+          'messages': List<Map<String, dynamic>>.from(data['messages'] ?? []),
+          'documents': List<Map<String, dynamic>>.from(data['documents'] ?? []),
+        };
       } else {
         print('Error fetching thread messages: ${response.statusCode} - ${response.body}');
-        return [];
+        return {'messages': [], 'documents': []};
       }
     } catch (e) {
       print('Error fetching thread messages: $e');
-      return [];
+      return {'messages': [], 'documents': []};
     }
   }
 

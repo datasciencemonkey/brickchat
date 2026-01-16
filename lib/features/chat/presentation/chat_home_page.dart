@@ -178,12 +178,19 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
     }
   }
 
-  void _loadThreadConversation(String? threadId, List<Map<String, dynamic>> messages) async {
+  /// Load a thread conversation with messages and documents.
+  /// Documents come from the same API response as messages (stored in Postgres),
+  /// enabling instant chip reconstruction without slow volume access.
+  void _loadThreadConversation(String? threadId, List<Map<String, dynamic>> messages, [List<Map<String, dynamic>>? documents]) {
     if (threadId == null || threadId == 'null') {
       // Start new thread
       _createNewThread();
       return;
     }
+
+    // Load documents immediately (from Postgres, already fetched with messages)
+    final docs = documents ?? [];
+    ref.read(documentsProvider.notifier).loadFromBackend(docs);
 
     setState(() {
       // Clear current messages
@@ -209,6 +216,11 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
           _currentAgentEndpoint = message['agent_endpoint'];
           break;
         }
+      }
+
+      // Update endpoint if documents present
+      if (docs.isNotEmpty) {
+        _currentAgentEndpoint = 'claude-opus-4-5';
       }
 
       // Load messages from the thread
@@ -258,17 +270,6 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
         _loadInitialMessages();
       }
     });
-
-    // Load documents for this thread if any
-    final docs = await FastApiService.getThreadDocuments(threadId);
-    ref.read(documentsProvider.notifier).loadFromBackend(docs);
-
-    // Update endpoint if documents present
-    if (docs.isNotEmpty) {
-      setState(() {
-        _currentAgentEndpoint = 'claude-opus-4-5';
-      });
-    }
 
     // Scroll to bottom after loading
     WidgetsBinding.instance.addPostFrameCallback((_) {
