@@ -1,0 +1,37 @@
+{
+  "brand": {
+    "name": "BrickChat",
+    "logo": {
+      "light": "assets/images/databricks-logo.png",
+      "dark": "assets/images/databricks-logo.png"
+    }
+  },
+  "colors": {
+    "primary": "#FF5F46",
+    "secondary": "#1B2A3D",
+    "accent": "#00D4FF",
+    "derived": {
+      "primaryForeground": "#FFFFFF",
+      "muted": "#1F1410",
+      "mutedForeground": "#9CA3AF"
+    }
+  },
+  "animation": {
+    "style": "neon",
+    "source": "https://github.com/flutterfx/flutterfx_widgets",
+    "effects": {
+      "background": "border_beams",
+      "loading": "wave_ripple",
+      "transitions": "blur_fade",
+      "interactive": "cool_mode_particles"
+    }
+  },
+  "modes": {
+    "default": "dark",
+    "available": ["light", "dark"]
+  },
+  "meta": {
+    "generated": "2026-01-18T00:00:00Z",
+    "version": "1.0"
+  }
+}

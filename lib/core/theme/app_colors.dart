@@ -39,43 +39,43 @@ abstract class AppColors {
   static const _lightSidebarBorder = Color(0xFFE5E7EB);
   static const _lightSidebarRing = Color(0xFFff5f46);
 
-  // BJ's Club - Electric Warehouse: Bold neon with deep midnight backdrop
-  static const _darkBackground = Color(0xFF0A0A14); // Deep midnight blue-black
-  static const _darkCard = Color(0xFF12121F); // Rich dark purple-black
-  static const _darkCardForeground = Color(0xFFE8E8FF);
-  static const _darkPopover = Color(0xFF1A1A2E);
-  static const _darkPopoverForeground = Color(0xFFE8E8FF);
-  static const _darkPrimary = Color(0xFF00D4FF); // Electric cyan - BJ's signature
-  static const _darkPrimaryForeground = Color(0xFF0A0A14);
-  static const _darkSecondary = Color(0xFFFF00FF); // Hot magenta
-  static const _darkSecondaryForeground = Color(0xFF0A0A14);
-  static const _darkMuted = Color(0xFF1E1E32);
-  static const _darkMutedForeground = Color(0xFF9090B0);
-  static const _darkAccent = Color(0xFFFFE500); // Electric yellow
-  static const _darkAccentForeground = Color(0xFF0A0A14);
-  static const _darkDestructive = Color(0xFFFF3366); // Neon pink-red
+  // Databricks Neon Theme: Orange primary with cyan accents on dark slate
+  static const _darkBackground = Color(0xFF0D1117); // Deep slate background
+  static const _darkCard = Color(0xFF161B22); // Slightly lighter slate card
+  static const _darkCardForeground = Color(0xFFE6EDF3);
+  static const _darkPopover = Color(0xFF1B2A3D);
+  static const _darkPopoverForeground = Color(0xFFE6EDF3);
+  static const _darkPrimary = Color(0xFFFF5F46); // Databricks orange
+  static const _darkPrimaryForeground = Color(0xFFFFFFFF);
+  static const _darkSecondary = Color(0xFF1B2A3D); // Deep slate
+  static const _darkSecondaryForeground = Color(0xFFE6EDF3);
+  static const _darkMuted = Color(0xFF1F1410);
+  static const _darkMutedForeground = Color(0xFF9CA3AF);
+  static const _darkAccent = Color(0xFF00D4FF); // Electric cyan accent
+  static const _darkAccentForeground = Color(0xFF0D1117);
+  static const _darkDestructive = Color(0xFFFF4757); // Neon red
   static const _darkDestructiveForeground = Color(0xFFFFFFFF);
-  static const _darkBorder = Color(0xFF2A2A45);
-  static const _darkInput = Color(0xFF16162A);
-  static const _darkRing = Color(0xFF00D4FF); // Electric cyan ring
+  static const _darkBorder = Color(0xFF30363D);
+  static const _darkInput = Color(0xFF161B22);
+  static const _darkRing = Color(0xFFFF5F46); // Orange ring
 
-  static const _darkMessageBubble = Color(0xFF1E1E32); // Dark purple-gray
-  static const _darkMessageBubbleOwn = Color(0xFF002B3D); // Deep cyan base
-  static const _darkMessageText = Color(0xFFE8E8FF);
+  static const _darkMessageBubble = Color(0xFF1B2A3D); // Deep slate
+  static const _darkMessageBubbleOwn = Color(0xFF3D1810); // Deep orange base
+  static const _darkMessageText = Color(0xFFE6EDF3);
   static const _darkMessageTextOwn = Color(0xFFFFFFFF);
   static const _darkTypingIndicator = Color(0xFF00D4FF);
   static const _darkOnlineStatus = Color(0xFF00FF88); // Neon green
-  static const _darkAwayStatus = Color(0xFFFFE500); // Electric yellow
-  static const _darkOfflineStatus = Color(0xFF4A4A6A);
+  static const _darkAwayStatus = Color(0xFFFF5F46); // Databricks orange
+  static const _darkOfflineStatus = Color(0xFF6B7280);
 
-  static const _darkSidebar = Color(0xFF06060E); // Deepest black-purple
-  static const _darkSidebarForeground = Color(0xFFE8E8FF);
-  static const _darkSidebarPrimary = Color(0xFF00D4FF); // Electric cyan
-  static const _darkSidebarPrimaryForeground = Color(0xFF0A0A14);
-  static const _darkSidebarAccent = Color(0xFF1A1A2E);
-  static const _darkSidebarAccentForeground = Color(0xFFE8E8FF);
-  static const _darkSidebarBorder = Color(0xFF1A1A2E);
-  static const _darkSidebarRing = Color(0xFF00D4FF);
+  static const _darkSidebar = Color(0xFF010409); // Deepest black
+  static const _darkSidebarForeground = Color(0xFFE6EDF3);
+  static const _darkSidebarPrimary = Color(0xFFFF5F46); // Databricks orange
+  static const _darkSidebarPrimaryForeground = Color(0xFFFFFFFF);
+  static const _darkSidebarAccent = Color(0xFF161B22);
+  static const _darkSidebarAccentForeground = Color(0xFFE6EDF3);
+  static const _darkSidebarBorder = Color(0xFF30363D);
+  static const _darkSidebarRing = Color(0xFFFF5F46);
 
   static const List<Color> _lightChartColors = [
     Color(0xFF6366F1),
@@ -86,16 +86,16 @@ abstract class AppColors {
   ];
 
   static const List<Color> _darkChartColors = [
+    Color(0xFFFF5F46), // Databricks orange
     Color(0xFF00D4FF), // Electric cyan
-    Color(0xFFFF00FF), // Hot magenta
-    Color(0xFFFFE500), // Electric yellow
     Color(0xFF00FF88), // Neon green
-    Color(0xFFFF3366), // Neon pink-red
+    Color(0xFFFF4757), // Neon red
+    Color(0xFF9945FF), // Neon purple
   ];
 
   // App logos
-  static const String lightLogo = 'assets/images/light-Databricks-Emblem.png';
-  static const String darkLogo = 'assets/images/dark-bjs-logo.png';
+  static const String lightLogo = 'assets/images/databricks-logo.png';
+  static const String darkLogo = 'assets/images/databricks-logo.png';
 
   static ColorScheme get lightColorScheme => const ColorScheme.light(
         brightness: Brightness.light,

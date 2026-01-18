@@ -57,8 +57,30 @@ abstract class AppGradients {
     stops: [0.0, 0.5, 1.0],
   );
 
-  // BJ's Club - Electric Warehouse Theme Gradients
+  // Databricks Neon Theme Gradients - Orange primary, cyan accent
   static const darkPrimaryGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [
+      Color(0xFFFF7355), // Bright orange
+      Color(0xFFFF5F46), // Databricks orange
+      Color(0xFFE54B32), // Deep orange
+    ],
+    stops: [0.0, 0.5, 1.0],
+  );
+
+  static const darkSecondaryGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [
+      Color(0xFF243B4D), // Light slate
+      Color(0xFF1B2A3D), // Deep slate
+      Color(0xFF12202D), // Darker slate
+    ],
+    stops: [0.0, 0.5, 1.0],
+  );
+
+  static const darkAccentGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
     colors: [
@@ -69,35 +91,13 @@ abstract class AppGradients {
     stops: [0.0, 0.5, 1.0],
   );
 
-  static const darkSecondaryGradient = LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: [
-      Color(0xFFFF33FF), // Bright magenta
-      Color(0xFFFF00FF), // Hot magenta
-      Color(0xFFCC00CC), // Deep magenta
-    ],
-    stops: [0.0, 0.5, 1.0],
-  );
-
-  static const darkAccentGradient = LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: [
-      Color(0xFFFFFF00), // Bright yellow
-      Color(0xFFFFE500), // Electric yellow
-      Color(0xFFFFCC00), // Deep gold
-    ],
-    stops: [0.0, 0.5, 1.0],
-  );
-
   static const darkBackgroundGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
     colors: [
-      Color(0xFF0A0A14), // Deep midnight
-      Color(0xFF0E0E1E), // Purple-black
-      Color(0xFF12122A), // Rich purple-black
+      Color(0xFF0D1117), // Deep slate
+      Color(0xFF161B22), // Lighter slate
+      Color(0xFF0D1117), // Deep slate
     ],
     stops: [0.0, 0.5, 1.0],
   );
@@ -106,9 +106,9 @@ abstract class AppGradients {
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
     colors: [
-      Color(0xFF12121F), // Dark purple-black
-      Color(0xFF1A1A2E), // Deeper purple
-      Color(0xFF22223A), // Rich purple
+      Color(0xFF161B22), // Slate card
+      Color(0xFF1B2A3D), // Deep slate
+      Color(0xFF21262D), // Lighter slate
     ],
     stops: [0.0, 0.5, 1.0],
   );
@@ -117,9 +117,9 @@ abstract class AppGradients {
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,
     colors: [
-      Color(0xFF06060E), // Deepest black
-      Color(0xFF0A0A14), // Midnight
-      Color(0xFF06060E), // Deepest black
+      Color(0xFF010409), // Deepest black
+      Color(0xFF0D1117), // Deep slate
+      Color(0xFF010409), // Deepest black
     ],
     stops: [0.0, 0.5, 1.0],
   );
@@ -128,8 +128,8 @@ abstract class AppGradients {
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
     colors: [
-      Color(0xFF002030), // Deep cyan-black
-      Color(0xFF003344), // Rich cyan-blue
+      Color(0xFF3D1810), // Deep orange base
+      Color(0xFF4A1E14), // Lighter orange
     ],
     stops: [0.0, 1.0],
   );
@@ -138,8 +138,8 @@ abstract class AppGradients {
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
     colors: [
-      Color(0xFF1E1E32), // Dark purple-gray
-      Color(0xFF2A2A45), // Lighter purple-gray
+      Color(0xFF1B2A3D), // Deep slate
+      Color(0xFF243B4D), // Lighter slate
     ],
     stops: [0.0, 1.0],
   );
@@ -156,13 +156,13 @@ abstract class AppGradients {
     stops: [0.0, 0.5, 1.0],
   );
 
-  // Button gradients - BJ's Club Electric
+  // Button gradients - Databricks Neon
   static const primaryButtonGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
     colors: [
-      Color(0xFF00E5FF), // Bright cyan
-      Color(0xFF00D4FF), // Electric cyan
+      Color(0xFFFF7355), // Bright orange
+      Color(0xFFFF5F46), // Databricks orange
     ],
   );
 
@@ -170,8 +170,8 @@ abstract class AppGradients {
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
     colors: [
-      Color(0xFFFF33FF), // Bright magenta
-      Color(0xFFFF00FF), // Hot magenta
+      Color(0xFF00E5FF), // Bright cyan
+      Color(0xFF00D4FF), // Electric cyan
     ],
   );
 
