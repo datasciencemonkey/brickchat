@@ -88,6 +88,11 @@ static const String lightLogo = '[CONFIG_LIGHT_LOGO]';
 static const String darkLogo = '[CONFIG_DARK_LOGO]';
 ```
 
+**Logo Sizing Note:**
+- The welcome screen (`lib/features/chat/presentation/widgets/welcome_hero_screen.dart`) displays the logo at `height: 120`
+- **Prefer emblem/icon-only logos** - full logos with text appear oversized at this height
+- If logo appears too large, verify an emblem-only asset is being used
+
 ### Color Generation Algorithm
 
 ```
@@ -308,6 +313,12 @@ After making all changes:
 2. Run `flutter build web --wasm` to verify build succeeds
 3. Report any issues found
 
+**IMPORTANT:** If testing via the backend server (http://localhost:8000):
+- The server serves static files from `build/web`
+- After rebuilding, **restart the server** to serve the new build
+- Kill existing server: `lsof -ti :8000 | xargs kill -9`
+- Start fresh: `cd backend && uv run python app.py`
+
 ## Output Summary
 
 After applying theme, display:
@@ -335,6 +346,7 @@ Animation style: [STYLE]
 
 Next steps:
 - Run `flutter build web --wasm` to rebuild
+- Restart the backend server to serve the new build
 - Test the app at http://localhost:8000
 ```
 

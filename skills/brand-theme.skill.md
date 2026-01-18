@@ -45,6 +45,12 @@ Do you have separate logos for light and dark modes?
 - Check that provided paths exist in the project
 - Warn if paths don't exist but allow proceeding (user may add files later)
 
+**Logo Recommendations:**
+- **Prefer emblem/icon-only logos** over full logos with text - they scale better
+- Logo is displayed at ~120px height on the welcome screen
+- Full logos with text (like "databricks" with wordmark) appear oversized
+- Example: `light-Databricks-Emblem.png` (just the stacked bricks icon) works better than `databricks-logo.png` (icon + "databricks" text)
+
 ## Step 2: App Identity Configuration
 
 Ask the user:
