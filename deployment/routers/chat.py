@@ -6,6 +6,7 @@ import asyncio
 from dotenv import load_dotenv
 import json
 import re
+from datetime import datetime, timezone
 from typing import List, Optional
 from database import initialize_database
 from auth import get_current_user, UserContext
@@ -373,14 +374,15 @@ async def get_thread_messages(
     try:
         messages = chat_db.get_thread_messages(thread_id, limit=limit, offset=offset)
 
-        # Check for documents in this thread
-        documents = document_service.list_documents(user.user_id, thread_id)
+        # Get document metadata from Postgres (instant, no volume access)
+        # This returns [] for threads without documents or pre-feature threads
+        documents = chat_db.get_thread_documents(thread_id)
 
         return {
             "messages": messages,
             "limit": limit,
             "offset": offset,
-            "documents": documents  # Include document metadata
+            "documents": documents  # Include document metadata for chip reconstruction
         }
     except Exception as e:
         logger.error(f"Error fetching thread messages: {str(e)}")
@@ -832,11 +834,24 @@ async def send_message_with_documents(
     # Read and format documents for LLM (in memory)
     doc_contents = []
     files_for_save = []
+    documents_metadata = []  # For Postgres storage
+    upload_time = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+
     for file in files:
         content = await file.read()
         doc_contents.append(document_service.format_document_for_llm(file.filename, content))
         files_for_save.append((file.filename, content))
+        documents_metadata.append({
+            'filename': file.filename,
+            'size': len(content),
+            'uploaded_at': upload_time
+        })
         logger.info(f"[SEND_WITH_DOCS] Formatted document: {file.filename}, size={len(content)}")
+
+    # Save document metadata to Postgres for instant chip reconstruction
+    if documents_metadata:
+        chat_db.update_thread_documents(thread_id, documents_metadata)
+        logger.info(f"[SEND_WITH_DOCS] Saved document metadata to Postgres: {len(documents_metadata)} docs")
 
     # Parse conversation history
     history = []

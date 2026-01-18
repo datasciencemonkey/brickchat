@@ -354,6 +354,49 @@ class ChatDatabase:
         )
         return result is not None
 
+    def update_thread_documents(self, thread_id: str, documents: List[Dict]) -> bool:
+        """
+        Update thread metadata with document list for chip reconstruction.
+
+        Stores document metadata (filename, size, uploaded_at) in the JSONB field
+        so frontend can reconstruct upload chips without slow volume access.
+
+        Args:
+            thread_id: The thread UUID
+            documents: List of {"filename": str, "size": int, "uploaded_at": str}
+
+        Returns:
+            True if update succeeded, False otherwise
+        """
+        query = """
+            UPDATE chat_threads
+            SET metadata = COALESCE(metadata, '{}'::jsonb) || %s
+            WHERE thread_id = %s
+            RETURNING thread_id
+        """
+        result = self.db.execute_query_one(
+            query,
+            (Json({"has_documents": "true", "documents": documents}), thread_id)
+        )
+        return result is not None
+
+    def get_thread_documents(self, thread_id: str) -> List[Dict]:
+        """
+        Get document metadata from thread metadata JSONB field.
+
+        Returns list of documents with filename, size, uploaded_at.
+        Returns empty list if no documents or thread doesn't exist.
+        """
+        query = """
+            SELECT metadata->'documents' as documents
+            FROM chat_threads
+            WHERE thread_id = %s
+        """
+        result = self.db.execute_query_one(query, (thread_id,))
+        if result and result.get('documents'):
+            return result['documents']
+        return []
+
     def get_user_most_recent_thread(self, user_id: str) -> Optional[str]:
         """Get the most recently updated thread for a user (by updated_at timestamp)"""
         query = """

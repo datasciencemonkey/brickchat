@@ -420,8 +420,25 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
           setState(() {});
         }
 
-        // Clear the staged documents (they've been sent to the LLM and are being saved in background)
-        ref.read(documentsProvider.notifier).clear();
+        // Mark documents as uploaded (stop loading spinner)
+        for (final doc in documents) {
+          ref.read(documentsProvider.notifier).setUploading(doc.filename, false);
+        }
+
+        // Auto-trigger TTS if eager mode is enabled (after streaming completes)
+        final eagerMode = ref.read(eagerModeProvider);
+        _log.info('Document TTS check: eagerMode=$eagerMode, bufferNotEmpty=${responseBuffer.isNotEmpty}, messageIndex=$messageIndex');
+        if (eagerMode && responseBuffer.isNotEmpty && messageIndex != -1) {
+          _log.info('Triggering eager mode TTS for document chat message: ${_messages[messageIndex].id}');
+          Future.delayed(const Duration(milliseconds: 300), () {
+            if (mounted) {
+              _log.info('Executing eager mode TTS playback for document message');
+              _playStreamingTts(_messages[messageIndex]);
+            }
+          });
+        } else {
+          _log.info('Skipping eager mode TTS: eagerMode=$eagerMode, bufferNotEmpty=${responseBuffer.isNotEmpty}, messageIndex=$messageIndex');
+        }
 
         // Add response to conversation history
         if (responseBuffer.isNotEmpty) {
