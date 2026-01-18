@@ -18,7 +18,7 @@ import '../../../shared/widgets/theme_toggle.dart';
 import '../../../shared/widgets/speech_to_text_widget.dart';
 import '../../../shared/widgets/collapsible_reasoning_widget.dart';
 import '../../../shared/widgets/footnotes_accordion.dart'; // Now exports SourcesAccordion
-import '../../../shared/widgets/particles_widget.dart';
+import '../../../shared/widgets/effects/effects_provider.dart';
 import '../../settings/presentation/settings_page.dart';
 import '../../settings/providers/settings_provider.dart';
 import '../../../core/services/fastapi_service.dart';
@@ -1218,8 +1218,6 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
   }
 
   Widget _buildChatBody() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     Widget body;
 
     if (_showWelcomeScreen) {
@@ -1246,28 +1244,8 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
       );
     }
 
-    return GradientContainer(
-      gradient: isDark
-          ? AppGradients.darkBackgroundGradient
-          : AppGradients.lightBackgroundGradient,
-      child: Stack(
-        children: [
-          // Starfield effect (only in dark mode)
-          if (isDark)
-            Positioned.fill(
-              child: ParticlesWidget(
-                quantity: 120,
-                ease: 80,
-                color: const Color(0xFFFFE4B5), // Warm starlight color
-                staticity: 50,
-                size: 2.5,
-              ),
-            ),
-          // Chat content on top
-          body,
-        ],
-      ),
-    );
+    // Use EffectsProvider for theme-aware background effects
+    return EffectsProvider.wrapWithBackground(body);
   }
 
   Widget _buildAgentEndpointDisplay() {

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'border_beams.dart';
+import 'cosmic_background.dart';
 
 /// Animation style presets available for theming
 enum AnimationStyle { cosmic, neon, minimal, professional, playful }
@@ -13,9 +14,10 @@ class EffectsProvider {
   /// Wraps a widget with the appropriate background effect
   static Widget wrapWithBackground(Widget child) {
     switch (activeStyle) {
+      case AnimationStyle.cosmic:
+        return CosmicBackground(child: child);
       case AnimationStyle.neon:
         return BorderBeamsBackground(child: child);
-      case AnimationStyle.cosmic:
       case AnimationStyle.professional:
       case AnimationStyle.playful:
       case AnimationStyle.minimal:

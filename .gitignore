@@ -155,5 +155,8 @@ staticfiles/
 # Git worktrees
 .worktrees/
 
+# Playwright MCP
+.playwright-mcp/
+
 # Local document storage
 documents/dev_user/
