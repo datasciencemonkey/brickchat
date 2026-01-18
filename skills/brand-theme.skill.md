@@ -15,10 +15,11 @@ Guide deployment teams through a conversational Q&A to capture brand identity an
 
 ## Process Overview
 
-Walk through three focused areas in order:
+Walk through four focused areas in order:
 1. **Logo** - File paths for light/dark mode logos
-2. **Colors** - Primary brand colors (accepts multiple input formats)
-3. **Animation Style** - Visual effects preset from flutterfx_widgets
+2. **App Identity** - App name, caption, and welcome message
+3. **Colors** - Primary brand colors (accepts multiple input formats)
+4. **Animation Style** - Visual effects preset from flutterfx_widgets
 
 ## Step 1: Logo Configuration
 
@@ -44,7 +45,34 @@ Do you have separate logos for light and dark modes?
 - Check that provided paths exist in the project
 - Warn if paths don't exist but allow proceeding (user may add files later)
 
-## Step 2: Color Configuration
+## Step 2: App Identity Configuration
+
+Ask the user:
+
+```
+Now let's set up your app's identity.
+
+What would you like to call your app?
+(This appears in the header and welcome message, e.g., "BrickChat", "DataBot", "MyAssistant")
+```
+
+After receiving the app name:
+
+```
+Great! Now for a tagline or caption that appears below the logo.
+(e.g., "Powered by Databricks AI", "Your AI Assistant", "Chat with your data")
+```
+
+**Defaults:**
+- If user skips or says "default", use the brand name from the config
+- Caption defaults to "Powered by AI" if not provided
+
+**Stored values:**
+- `appName.light` and `appName.dark` - Usually the same, but can differ
+- `caption.light` and `caption.dark` - Usually the same
+- `welcomeMessage` - Auto-generated as "Welcome to {appName}!"
+
+## Step 3: Color Configuration
 
 Ask the user:
 
@@ -126,7 +154,7 @@ Always auto-generate these based on primary/secondary:
 - `muted`: Desaturated version of primary at low lightness
 - `mutedForeground`: Medium gray with slight color tint
 
-## Step 3: Animation Style
+## Step 4: Animation Style
 
 Ask the user:
 
@@ -153,7 +181,7 @@ Effect patterns referenced from: https://github.com/flutterfx/flutterfx_widgets
 | professional | fancy_card | progress_loader | blur_fade | — |
 | playful | flickering_grid | rising_particles | motion_blur | cool_mode_particles |
 
-## Step 4: Theme Mode Preference
+## Step 5: Theme Mode Preference
 
 Ask the user:
 
@@ -178,6 +206,15 @@ Write to: `assets/config/theme_config.json`
 {
   "brand": {
     "name": "[BRAND_NAME or 'BrickChat']",
+    "appName": {
+      "light": "[APP_NAME]",
+      "dark": "[APP_NAME]"
+    },
+    "caption": {
+      "light": "[CAPTION]",
+      "dark": "[CAPTION]"
+    },
+    "welcomeMessage": "Welcome to [APP_NAME]!",
     "logo": {
       "light": "[LIGHT_LOGO_PATH]",
       "dark": "[DARK_LOGO_PATH]"
@@ -226,6 +263,8 @@ After writing the config file:
 Theme configuration saved to assets/config/theme_config.json
 
 Summary:
+- App name: [name]
+- Caption: [caption]
 - Logo: [paths]
 - Primary color: [hex] ([original input])
 - Animation style: [style]
@@ -233,12 +272,13 @@ Summary:
 
 Next steps:
 - Run /apply-theme to generate Dart code from this configuration
-- Or manually update lib/core/theme/app_colors.dart using these values
+- Or manually update lib/core/theme/ and lib/core/constants/ using these values
 ```
 
 ## Validation Checklist
 
 Before writing the config file, verify:
+- [ ] App name is provided (or defaults to brand name)
 - [ ] At least one logo path is provided
 - [ ] Primary color is a valid hex code
 - [ ] Animation style is one of: cosmic, neon, minimal, professional, playful

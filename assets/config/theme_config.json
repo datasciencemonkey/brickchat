@@ -1,9 +1,18 @@
 {
   "brand": {
     "name": "BrickChat",
+    "appName": {
+      "light": "BrickChat",
+      "dark": "BrickChat"
+    },
+    "caption": {
+      "light": "Powered by Databricks AI",
+      "dark": "Powered by Databricks AI"
+    },
+    "welcomeMessage": "Welcome to BrickChat!",
     "logo": {
-      "light": "assets/images/databricks-logo.png",
-      "dark": "assets/images/databricks-logo.png"
+      "light": "assets/images/light-Databricks-Emblem.png",
+      "dark": "assets/images/light-Databricks-Emblem.png"
     }
   },
   "colors": {
