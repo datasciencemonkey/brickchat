@@ -7,7 +7,7 @@
 .pub/
 **/doc/api/
 build/
-deployment/build/
+# deployment/build/
 **/ios/Flutter/.last_build_id
 
 # Android
@@ -155,3 +155,5 @@ staticfiles/
 # Git worktrees
 .worktrees/
 
+# Local document storage
+documents/dev_user/

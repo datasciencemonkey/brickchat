@@ -53,33 +53,15 @@ digraph deployment {
     "Gather info (app name, profile)" -> "Check app exists";
     "Check app exists" -> "App exists?" [shape=diamond];
     "App exists?" -> "Create app" [label="no"];
-    "App exists?" -> "Prepare .gitignore (comment out build/)" [label="yes"];
-    "Create app" -> "Prepare .gitignore (comment out build/)";
-    "Prepare .gitignore (comment out build/)" -> "Update deployment files";
-    "Update deployment files" -> "Sync to workspace";
-    "Sync to workspace" -> "Deploy from workspace";
+    "App exists?" -> "Update deployment files" [label="yes"];
+    "Create app" -> "Update deployment files";
+    "Update deployment files" -> "Upload to workspace";
+    "Upload to workspace" -> "Deploy from workspace";
     "Deploy from workspace" -> "Verify deployment";
-    "Verify deployment" -> "Restore .gitignore (uncomment build/)";
 }
 ```
 
-## Step 1: Prepare .gitignore for Deployment
-
-**CRITICAL:** The `build/` and `deployment/build/` folders must be tracked in git for workspace sync to work. Before deployment, temporarily modify `.gitignore`:
-
-```bash
-# Comment out build folders in .gitignore
-sed -i '' 's/^build\/$/# build\//' .gitignore
-sed -i '' 's/^deployment\/build\/$/# deployment\/build\//' .gitignore
-```
-
-**Verify the change:**
-```bash
-grep -E "^#?\s*build\/" .gitignore
-# Should show: # build/
-```
-
-## Step 2: Update Deployment Files
+## Step 1: Update Deployment Files
 
 **Option A: Use the update script**
 ```bash
@@ -112,7 +94,7 @@ cd backend && uv pip freeze > ../deployment/requirements.txt
 - `backend/app.py` references `build/web/` or `../build/web/`
 - See Troubleshooting section if frontend doesn't load
 
-## Step 3: Configure Secrets (First Deployment Only)
+## Step 2: Configure Secrets (First Deployment Only)
 
 Secrets are referenced in `app.yaml` using `valueFrom`:
 
@@ -124,7 +106,7 @@ Secrets are referenced in `app.yaml` using `valueFrom`:
 
 Configure in Databricks workspace settings or via CLI.
 
-## Step 4: Local Testing
+## Step 3: Local Testing
 
 ```bash
 cd deployment
@@ -138,18 +120,38 @@ Verify at `http://localhost:8000`:
 - Health check: `curl http://localhost:8000/health`
 - Chat functionality works
 
-## Step 5: Sync to Databricks Workspace
+## Step 4: Upload to Databricks Workspace
 
-**IMPORTANT:** The `databricks apps deploy` command requires a **workspace path**, not a local path. You must sync local files to the workspace first.
+**IMPORTANT:** The `databricks apps deploy` command requires a **workspace path**, not a local path. You must upload local files to the workspace first.
 
-```bash
-# Sync deployment folder to workspace (use --full for complete sync)
-databricks sync ./deployment /Workspace/Users/<YOUR_EMAIL>/brickchat --profile <PROFILE> --full
-```
+**Why not `databricks sync`?** The `databricks sync` command respects `.gitignore`, which excludes `build/` folders. Using `databricks workspace import-dir` bypasses `.gitignore` and uploads all files directly.
 
 Replace `<YOUR_EMAIL>` with the user's Databricks email (can be found from `databricks apps get` output under `creator` field).
 
-## Step 6: Deploy from Workspace
+### Step 4a: Clear existing workspace folder (if updating)
+
+```bash
+# Delete old deployment from workspace to ensure clean state
+databricks workspace delete /Workspace/Users/<YOUR_EMAIL>/brickchat --recursive --profile <PROFILE>
+```
+
+**Note:** This command may fail if the folder doesn't exist yet - that's fine for first deployments.
+
+### Step 4b: Upload deployment folder
+
+```bash
+# Upload deployment folder directly (bypasses .gitignore)
+databricks workspace import-dir ./deployment /Workspace/Users/<YOUR_EMAIL>/brickchat --profile <PROFILE> --overwrite
+```
+
+**Verify upload:**
+```bash
+databricks workspace list /Workspace/Users/<YOUR_EMAIL>/brickchat --profile <PROFILE>
+```
+
+You should see `app.py`, `app.yaml`, `build/`, `routers/`, etc.
+
+## Step 5: Deploy from Workspace
 
 ```bash
 # Deploy from the workspace path (NOT local path)
@@ -159,10 +161,11 @@ databricks apps deploy <APP_NAME> --source-code-path /Workspace/Users/<YOUR_EMAI
 **Common mistake:** Using `--source-code-path ./deployment` will fail with "must be a valid workspace path" error.
 
 For subsequent updates:
-1. Run the sync command again
-2. Run the deploy command again
+1. Run the delete command (Step 4a) - optional but recommended for clean state
+2. Run the import-dir command (Step 4b) again
+3. Run the deploy command again
 
-## Step 7: Verify Deployment
+## Step 6: Verify Deployment
 
 ```bash
 # Check app status
@@ -178,37 +181,19 @@ databricks apps logs <APP_NAME> --profile <PROFILE>
 - `active_deployment.status.state`: `SUCCEEDED`
 - `url`: The app URL will be displayed
 
-## Step 8: Restore .gitignore
-
-**CRITICAL:** After successful deployment, restore `.gitignore` to ignore build folders again:
-
-```bash
-# Uncomment build folders in .gitignore
-sed -i '' 's/^# build\/$/build\//' .gitignore
-sed -i '' 's/^# deployment\/build\/$/deployment\/build\//' .gitignore
-```
-
-**Verify the restore:**
-```bash
-grep -E "^build\/" .gitignore
-# Should show: build/
-```
-
-This prevents accidental commits of large build artifacts to the repository.
-
 ## Quick Reference
 
 | Task | Command |
 |------|---------|
 | Check app exists | `databricks apps get <APP_NAME> --profile <PROFILE>` |
 | Create app (once) | `databricks apps create <APP_NAME> --description "BrickChat - AI Chat Application" --profile <PROFILE>` |
-| Prepare .gitignore | `sed -i '' 's/^build\/$/# build\//' .gitignore && sed -i '' 's/^deployment\/build\/$/# deployment\/build\//' .gitignore` |
 | Update deployment | `cd deployment && ./update_deployment.sh` |
 | Local test | `cd deployment && uv run uvicorn app:app --host 0.0.0.0 --port 8000` |
-| Sync to workspace | `databricks sync ./deployment /Workspace/Users/<EMAIL>/brickchat --profile <PROFILE> --full` |
+| Delete from workspace | `databricks workspace delete /Workspace/Users/<EMAIL>/brickchat --recursive --profile <PROFILE>` |
+| Upload to workspace | `databricks workspace import-dir ./deployment /Workspace/Users/<EMAIL>/brickchat --profile <PROFILE> --overwrite` |
+| Verify upload | `databricks workspace list /Workspace/Users/<EMAIL>/brickchat --profile <PROFILE>` |
 | Deploy | `databricks apps deploy <APP_NAME> --source-code-path /Workspace/Users/<EMAIL>/brickchat --profile <PROFILE>` |
 | Check status | `databricks apps get <APP_NAME> --profile <PROFILE>` |
-| Restore .gitignore | `sed -i '' 's/^# build\/$/build\//' .gitignore && sed -i '' 's/^# deployment\/build\/$/deployment\/build\//' .gitignore` |
 | View logs | `databricks apps logs <APP_NAME> --profile <PROFILE>` |
 | Health check | `curl http://localhost:8000/health` |
 
@@ -216,8 +201,11 @@ This prevents accidental commits of large build artifacts to the repository.
 
 ### "Source code path must be a valid workspace path" error
 This happens when using a local path with `databricks apps deploy`. Solution:
-1. First sync files to workspace: `databricks sync ./deployment /Workspace/Users/<EMAIL>/brickchat --profile <PROFILE> --full`
+1. First upload files to workspace: `databricks workspace import-dir ./deployment /Workspace/Users/<EMAIL>/brickchat --profile <PROFILE> --overwrite`
 2. Then deploy from workspace path: `databricks apps deploy <APP_NAME> --source-code-path /Workspace/Users/<EMAIL>/brickchat --profile <PROFILE>`
+
+### Build folder not uploaded (databricks sync respects .gitignore)
+If using `databricks sync`, the `build/` folder is skipped because it's in `.gitignore`. Solution: Use `databricks workspace import-dir` instead, which ignores `.gitignore` and uploads all files directly.
 
 ### "App does not exist or is deleted" error
 Create the app first:

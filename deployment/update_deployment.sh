@@ -28,6 +28,7 @@ echo "🔧 Updating backend files..."
 echo "⚠️  Skipping app.py (different build paths - edit manually if needed)"
 # cp backend/app.py deployment/  # Uncomment only if paths are aligned
 cp backend/database.py deployment/
+cp backend/document_service.py deployment/
 cp backend/auth.py deployment/
 cp backend/schema.sql deployment/
 cp backend/run_migration.py deployment/ 2>/dev/null || true
