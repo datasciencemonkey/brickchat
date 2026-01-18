@@ -142,7 +142,8 @@ Finally, what visual style fits your brand?
 
 ### Style Preset Mappings
 
-Effects sourced from: https://github.com/flutterfx/flutterfx_widgets
+Effect patterns referenced from: https://github.com/flutterfx/flutterfx_widgets
+(Claude will implement effects directly using existing packages like flutter_animate, glowy_borders)
 
 | Style | background | loading | transitions | interactive |
 |-------|------------|---------|-------------|-------------|
