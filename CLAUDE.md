@@ -336,8 +336,17 @@ Guides deployment teams through Q&A to configure app branding without code chang
 
 **Animation effects sourced from:** [flutterfx/flutterfx_widgets](https://github.com/flutterfx/flutterfx_widgets)
 
-#### `/apply-theme` (planned)
-Reads `theme_config.json` and generates Dart code updates to apply the theme.
+#### `/apply-theme` - Apply Theme from Configuration
+Reads `theme_config.json` and updates Dart theme files.
+
+**Updates:**
+- `lib/core/theme/app_colors.dart` - Color constants and logo paths
+- `lib/core/theme/gradients.dart` - Gradient variations from brand colors
+- `lib/shared/widgets/effects/` - Animation effect widgets based on style
+
+**Prerequisites:** Run `/brand-theme` first to generate `assets/config/theme_config.json`
+
+**Usage:** Invoke with `/apply-theme` after generating a theme config
 
 ## Important Notes
 
