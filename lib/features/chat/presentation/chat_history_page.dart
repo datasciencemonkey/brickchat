@@ -6,8 +6,8 @@ import '../../../core/services/fastapi_service.dart';
 
 class ChatHistoryPage extends ConsumerStatefulWidget {
   /// Callback when a thread is selected.
-  /// Parameters: threadId, messages list, documents list (for chip reconstruction)
-  final Function(String threadId, List<Map<String, dynamic>> messages, List<Map<String, dynamic>> documents)? onThreadSelected;
+  /// Parameters: threadId, messages list, documents list (for chip reconstruction), thread_model_type
+  final Function(String threadId, List<Map<String, dynamic>> messages, List<Map<String, dynamic>> documents, String? threadModelType)? onThreadSelected;
   final String userId;
 
   const ChatHistoryPage({
@@ -126,13 +126,14 @@ class _ChatHistoryPageState extends ConsumerState<ChatHistoryPage> {
   }
 
   Future<void> _selectThread(String threadId) async {
-    // Fetch messages and documents for this thread (single API call)
+    // Fetch messages, documents, and model type for this thread (single API call)
     final response = await FastApiService.getThreadMessages(threadId);
     final messages = response['messages'] as List<Map<String, dynamic>>;
     final documents = response['documents'] as List<Map<String, dynamic>>;
+    final threadModelType = response['thread_model_type'] as String?;
 
     if (widget.onThreadSelected != null) {
-      widget.onThreadSelected!(threadId, messages, documents);
+      widget.onThreadSelected!(threadId, messages, documents, threadModelType);
     }
 
     // Close the history page
@@ -170,7 +171,7 @@ class _ChatHistoryPageState extends ConsumerState<ChatHistoryPage> {
               // Close history and start new thread
               Navigator.of(context).pop();
               if (widget.onThreadSelected != null) {
-                widget.onThreadSelected!(null.toString(), [], []);
+                widget.onThreadSelected!(null.toString(), [], [], null);
               }
             },
             tooltip: 'New conversation',

@@ -424,6 +424,52 @@ class ChatDatabase:
         logger.info(f"[DB] needs_document_reload: thread={thread_id}, most_recent={most_recent}, needs_reload={needs_reload}")
         return needs_reload
 
+    def get_thread_model_type(self, thread_id: str) -> Optional[str]:
+        """
+        Get the model type locked to this thread.
+
+        Returns:
+            'standard' - Thread uses DATABRICKS_MODEL (no documents)
+            'document' - Thread uses DATABRICKS_DOCUMENT_MODEL (with documents)
+            None - Fresh thread (neither model used yet, both allowed)
+        """
+        query = """
+            SELECT metadata->>'thread_model_type' as model_type
+            FROM chat_threads
+            WHERE thread_id = %s
+        """
+        result = self.db.execute_query_one(query, (thread_id,))
+        return result.get('model_type') if result else None
+
+    def set_thread_model_type(self, thread_id: str, model_type: str) -> bool:
+        """
+        Set the model type for a thread (only if not already set).
+
+        This is idempotent - first write wins. If a thread already has a model type,
+        this method will not change it and will return False.
+
+        Args:
+            thread_id: The thread UUID
+            model_type: 'standard' or 'document'
+
+        Returns:
+            True if model type was set, False if already set or thread doesn't exist
+        """
+        query = """
+            UPDATE chat_threads
+            SET metadata = COALESCE(metadata, '{}'::jsonb) || %s
+            WHERE thread_id = %s
+            AND (metadata->>'thread_model_type' IS NULL)
+            RETURNING thread_id
+        """
+        result = self.db.execute_query_one(
+            query,
+            (Json({"thread_model_type": model_type}), thread_id)
+        )
+        if result:
+            logger.info(f"[DB] Thread {thread_id} locked to model type: {model_type}")
+        return result is not None
+
     def initialize_schema(self):
         """Initialize database schema"""
         schema_path = os.path.join(os.path.dirname(__file__), 'schema.sql')

@@ -116,3 +116,37 @@ final activeEndpointProvider = Provider<String?>((ref) {
   // Return Claude model name when documents present, null otherwise (use default)
   return hasDocuments ? 'claude-opus-4-5' : null;
 });
+
+/// Thread model type - determines which model a thread is locked to
+enum ThreadModelType {
+  standard, // Thread uses DATABRICKS_MODEL (no documents allowed)
+  document, // Thread uses DATABRICKS_DOCUMENT_MODEL (documents allowed)
+  fresh, // New thread - either model allowed
+}
+
+/// Provider for current thread's model type
+final threadModelTypeProvider = StateProvider<ThreadModelType>((ref) {
+  return ThreadModelType.fresh;
+});
+
+/// Computed provider: whether document uploads are allowed for current thread
+/// Only allow uploads for fresh threads or document threads
+final canUploadDocumentsProvider = Provider<bool>((ref) {
+  final modelType = ref.watch(threadModelTypeProvider);
+  return modelType == ThreadModelType.fresh ||
+      modelType == ThreadModelType.document;
+});
+
+/// Extension to parse model type from API response string
+extension ThreadModelTypeParser on String? {
+  ThreadModelType toThreadModelType() {
+    switch (this) {
+      case 'standard':
+        return ThreadModelType.standard;
+      case 'document':
+        return ThreadModelType.document;
+      default:
+        return ThreadModelType.fresh;
+    }
+  }
+}

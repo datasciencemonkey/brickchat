@@ -378,11 +378,16 @@ async def get_thread_messages(
         # This returns [] for threads without documents or pre-feature threads
         documents = chat_db.get_thread_documents(thread_id)
 
+        # Get thread model type for frontend to show/hide upload button
+        # Returns 'standard', 'document', or None (fresh thread)
+        thread_model_type = chat_db.get_thread_model_type(thread_id)
+
         return {
             "messages": messages,
             "limit": limit,
             "offset": offset,
-            "documents": documents  # Include document metadata for chip reconstruction
+            "documents": documents,  # Include document metadata for chip reconstruction
+            "thread_model_type": thread_model_type  # For upload button visibility
         }
     except Exception as e:
         logger.error(f"Error fetching thread messages: {str(e)}")
@@ -431,6 +436,22 @@ async def send_message(message: dict, user: UserContext = Depends(get_current_us
             if has_documents:
                 needs_reload = chat_db.needs_document_reload(user_id, thread_id)
             logger.info(f"[CHAT] has_documents={has_documents}, needs_reload={needs_reload}")
+
+        # Check thread model type to prevent model mixing
+        thread_model_type = chat_db.get_thread_model_type(thread_id) if thread_id else None
+
+        # If thread is locked to document model but user is trying to send without docs
+        if thread_model_type == 'document' and not has_documents:
+            logger.warning(f"[CHAT] Thread {thread_id} is locked to document model but no documents present")
+            raise HTTPException(
+                status_code=400,
+                detail="This thread uses the document model. Please upload documents or start a new conversation."
+            )
+
+        # Lock fresh thread to standard model (first message without documents)
+        if thread_model_type is None and not has_documents:
+            chat_db.set_thread_model_type(thread_id, 'standard')
+            logger.info(f"[CHAT] Thread {thread_id} locked to standard model")
 
         if has_documents:
             # Route to Claude with documents
@@ -814,13 +835,25 @@ async def send_message_with_documents(
     user_id = user.user_id
     logger.info(f"[SEND_WITH_DOCS] Received request: message_len={len(message)}, files={len(files)}, thread_id={thread_id}")
 
-    # Create thread if needed (with has_documents flag)
+    # Create thread if needed (with has_documents flag and model type)
     if not thread_id:
-        thread_id = chat_db.create_thread(user_id=user_id, metadata={'has_documents': 'true'})
-        logger.info(f"[SEND_WITH_DOCS] Created new thread: {thread_id}")
+        thread_id = chat_db.create_thread(
+            user_id=user_id,
+            metadata={'has_documents': 'true', 'thread_model_type': 'document'}
+        )
+        logger.info(f"[SEND_WITH_DOCS] Created new thread: {thread_id} (locked to document model)")
     else:
-        # Update existing thread to mark it has documents
+        # Check if thread is locked to standard model
+        thread_model_type = chat_db.get_thread_model_type(thread_id)
+        if thread_model_type == 'standard':
+            logger.warning(f"[SEND_WITH_DOCS] Thread {thread_id} is locked to standard model")
+            raise HTTPException(
+                status_code=400,
+                detail="This thread uses the standard model. Please start a new conversation to upload documents."
+            )
+        # Update existing thread to mark it has documents and lock to document model
         chat_db.update_thread_has_documents(thread_id, True)
+        chat_db.set_thread_model_type(thread_id, 'document')
 
     # Save user message
     user_message_id = chat_db.save_message(

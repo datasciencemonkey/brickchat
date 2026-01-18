@@ -385,7 +385,7 @@ class FastApiService {
   }
 
   /// Fetch all messages and documents for a specific thread
-  /// Returns a map with 'messages' and 'documents' arrays
+  /// Returns a map with 'messages', 'documents', and 'thread_model_type'
   static Future<Map<String, dynamic>> getThreadMessages(String threadId) async {
     try {
       final url = Uri.parse('$baseUrl/api/chat/threads/$threadId/messages');
@@ -400,14 +400,15 @@ class FastApiService {
         return {
           'messages': List<Map<String, dynamic>>.from(data['messages'] ?? []),
           'documents': List<Map<String, dynamic>>.from(data['documents'] ?? []),
+          'thread_model_type': data['thread_model_type'], // 'standard', 'document', or null
         };
       } else {
         print('Error fetching thread messages: ${response.statusCode} - ${response.body}');
-        return {'messages': [], 'documents': []};
+        return {'messages': [], 'documents': [], 'thread_model_type': null};
       }
     } catch (e) {
       print('Error fetching thread messages: $e');
-      return {'messages': [], 'documents': []};
+      return {'messages': [], 'documents': [], 'thread_model_type': null};
     }
   }
 

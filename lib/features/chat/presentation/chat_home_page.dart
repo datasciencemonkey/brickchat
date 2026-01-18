@@ -139,6 +139,9 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
       ref.read(documentsProvider.notifier).clear();
     });
 
+    // Reset thread model type to fresh (allow either model)
+    ref.read(threadModelTypeProvider.notifier).state = ThreadModelType.fresh;
+
     // Show confirmation snackbar
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -178,10 +181,10 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
     }
   }
 
-  /// Load a thread conversation with messages and documents.
+  /// Load a thread conversation with messages, documents, and model type.
   /// Documents come from the same API response as messages (stored in Postgres),
   /// enabling instant chip reconstruction without slow volume access.
-  void _loadThreadConversation(String? threadId, List<Map<String, dynamic>> messages, [List<Map<String, dynamic>>? documents]) {
+  void _loadThreadConversation(String? threadId, List<Map<String, dynamic>> messages, [List<Map<String, dynamic>>? documents, String? threadModelType]) {
     if (threadId == null || threadId == 'null') {
       // Start new thread
       _createNewThread();
@@ -191,6 +194,9 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
     // Load documents immediately (from Postgres, already fetched with messages)
     final docs = documents ?? [];
     ref.read(documentsProvider.notifier).loadFromBackend(docs);
+
+    // Set thread model type for upload button visibility
+    ref.read(threadModelTypeProvider.notifier).state = threadModelType.toThreadModelType();
 
     setState(() {
       // Clear current messages
@@ -481,8 +487,19 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
 
     // If we have pending documents, use the combined endpoint (send docs + message together)
     if (hasPendingDocs) {
+      // Lock thread to document model when sending with documents
+      final currentModelType = ref.read(threadModelTypeProvider);
+      if (currentModelType == ThreadModelType.fresh) {
+        ref.read(threadModelTypeProvider.notifier).state = ThreadModelType.document;
+      }
       await _sendMessageWithDocuments(messageText, pendingDocs);
       return;
+    }
+
+    // Lock fresh thread to standard model when sending without documents
+    final currentModelType = ref.read(threadModelTypeProvider);
+    if (currentModelType == ThreadModelType.fresh) {
+      ref.read(threadModelTypeProvider.notifier).state = ThreadModelType.standard;
     }
 
     final message = ChatMessage(
@@ -1860,13 +1877,22 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
                   focusNode: _messageInputFocus,
                   decoration: InputDecoration(
                     hintText: 'Type a message...',
-                    prefixIcon: IconButton(
-                      onPressed: _pickDocuments,
-                      icon: Icon(
-                        Icons.attach_file,
-                        color: context.appColors.mutedForeground,
-                      ),
-                      tooltip: 'Attach document (PDF, TXT)',
+                    prefixIcon: Consumer(
+                      builder: (context, ref, _) {
+                        final canUpload = ref.watch(canUploadDocumentsProvider);
+                        return IconButton(
+                          onPressed: canUpload ? _pickDocuments : null,
+                          icon: Icon(
+                            Icons.attach_file,
+                            color: canUpload
+                                ? context.appColors.mutedForeground
+                                : context.appColors.mutedForeground.withValues(alpha: 0.3),
+                          ),
+                          tooltip: canUpload
+                              ? 'Attach document (PDF, TXT)'
+                              : 'Document upload not available in this thread',
+                        );
+                      },
                     ),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(AppConstants.radiusLg),
