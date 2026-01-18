@@ -131,6 +131,69 @@ Apply same pattern to:
 
 Based on `animation.style` from config, create or update animation widgets.
 
+### CRITICAL: Follow Existing Codebase Patterns
+
+All effects MUST follow these patterns from the existing codebase:
+
+#### Pattern 1: Theme Brightness Detection
+```dart
+final isDark = Theme.of(context).brightness == Brightness.dark;
+```
+
+#### Pattern 2: AppColors Extension Access
+```dart
+final appColors = Theme.of(context).extension<AppColorsExtension>()!;
+final colorScheme = Theme.of(context).colorScheme;
+```
+
+#### Pattern 3: Dynamic Color Selection (from speech_to_text_widget.dart)
+```dart
+List<Color> _buildGlowColors() {
+  final isDark = Theme.of(context).brightness == Brightness.dark;
+  final appColors = context.appColors;
+
+  if (isDark) {
+    return isActive
+      ? [
+          colorScheme.primary.withOpacity(0.8),
+          colorScheme.secondary.withOpacity(0.6),
+          appColors.accent.withOpacity(0.4),
+        ]
+      : [
+          appColors.mutedForeground.withOpacity(0.3),
+          appColors.mutedForeground.withOpacity(0.2),
+        ];
+  }
+  // Light theme with reduced intensity...
+}
+```
+
+#### Pattern 4: Use AppConstants for Animation Values
+Reference: `lib/core/constants/app_constants.dart`
+```dart
+static const Duration glowAnimationDuration = Duration(milliseconds: 2000);
+static const double glowBorderSize = 2.0;
+static const double speechGlowSizeListening = 12.0;
+static const double speechGlowSizeIdle = 6.0;
+```
+
+#### Pattern 5: Existing Packages to Use
+- **glowy_borders** - `AnimatedGradientBorder` for neon glow effects
+- **flutter_animate** - `.animate().fadeIn().scale().shimmer()` chains
+- **CustomPainter** - For particle/starfield effects (see `particles_widget.dart`)
+- **AnimationController + AnimatedBuilder** - For wave/pulse effects
+
+#### Pattern 6: Particles Widget Reference
+See `lib/shared/widgets/particles_widget.dart` for starfield implementation:
+```dart
+ParticlesWidget(
+  quantity: 50,
+  color: appColors.primary,  // Theme-aware
+  staticity: 50,
+  size: 0.4,
+)
+```
+
 ### Effect Implementation Patterns
 
 Reference: https://github.com/flutterfx/flutterfx_widgets
