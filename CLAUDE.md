@@ -316,6 +316,29 @@ The app uses ProviderScope at the root level with:
 - 🔲 Export conversation history
 - 🔲 Production deployment configuration
 
+## Project Skills
+
+Skills are Claude Code workflows that automate common tasks. Located in `skills/`.
+
+### Available Skills
+
+#### `/brand-theme` - Brand Theme Configuration
+Guides deployment teams through Q&A to configure app branding without code changes.
+
+**Collects:**
+- Logo file paths (light/dark variants)
+- Brand colors (hex, names, brand references, or descriptions)
+- Animation style preset (cosmic, neon, minimal, professional, playful)
+
+**Outputs:** `assets/config/theme_config.json`
+
+**Usage:** Invoke with `/brand-theme` or ask to "configure branding" or "set up theme"
+
+**Animation effects sourced from:** [flutterfx/flutterfx_widgets](https://github.com/flutterfx/flutterfx_widgets)
+
+#### `/apply-theme` (planned)
+Reads `theme_config.json` and generates Dart code updates to apply the theme.
+
 ## Important Notes
 
 ### Critical Implementation Details
