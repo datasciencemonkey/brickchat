@@ -1,4 +1,5 @@
 """Database connection and utilities for BrickChat feedback system"""
+import hashlib
 import os
 from typing import Dict, List, Optional
 from psycopg2.extras import RealDictCursor, Json
@@ -24,6 +25,12 @@ def normalize_unicode(text: Optional[str]) -> str:
         .replace('\ufb01', 'fi')
         .replace('\ufb02', 'fl')
         .replace('\u25cf', '•'))
+
+
+def generate_agent_id(endpoint_url: str) -> str:
+    """Generate deterministic 12-char ID from endpoint URL."""
+    return hashlib.sha256(endpoint_url.encode()).hexdigest()[:12]
+
 
 class DatabaseManager:
     """Manages PostgreSQL database connections and operations"""
@@ -497,6 +504,122 @@ class ChatDatabase:
                 if conn:
                     self.db.put_connection(conn)
 
+
+class AutonomousAgentsDatabase:
+    """Database operations for autonomous agents registry."""
+
+    def __init__(self, db_manager: DatabaseManager):
+        self.db = db_manager
+
+    def get_agent_by_id(self, agent_id: str) -> Optional[Dict]:
+        """Get a single agent by ID."""
+        return self.db.execute_query_one(
+            "SELECT * FROM autonomous_agents WHERE agent_id = %s",
+            (agent_id,)
+        )
+
+    def get_agent_by_url(self, endpoint_url: str) -> Optional[Dict]:
+        """Get a single agent by endpoint URL."""
+        return self.db.execute_query_one(
+            "SELECT * FROM autonomous_agents WHERE endpoint_url = %s",
+            (endpoint_url,)
+        )
+
+    def get_enabled_agents(self) -> List[Dict]:
+        """Get all enabled agents (for router)."""
+        return self.db.execute_query(
+            "SELECT * FROM autonomous_agents WHERE status = 'enabled' ORDER BY name"
+        )
+
+    def get_all_agents(self) -> List[Dict]:
+        """Get all agents regardless of status (for admin UI)."""
+        return self.db.execute_query(
+            "SELECT * FROM autonomous_agents ORDER BY status, name"
+        )
+
+    def upsert_agent(
+        self,
+        agent_id: str,
+        endpoint_url: str,
+        name: str,
+        description: Optional[str] = None,
+        databricks_metadata: Optional[Dict] = None,
+        admin_metadata: Optional[Dict] = None,
+        status: str = 'new'
+    ) -> Dict:
+        """Insert or update an agent."""
+        import json
+
+        result = self.db.execute_query_one(
+            """
+            INSERT INTO autonomous_agents
+                (agent_id, endpoint_url, name, description, databricks_metadata, admin_metadata, status)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (agent_id) DO UPDATE SET
+                name = COALESCE(EXCLUDED.name, autonomous_agents.name),
+                description = COALESCE(EXCLUDED.description, autonomous_agents.description),
+                databricks_metadata = COALESCE(EXCLUDED.databricks_metadata, autonomous_agents.databricks_metadata),
+                updated_at = CURRENT_TIMESTAMP
+            RETURNING *
+            """,
+            (
+                agent_id,
+                endpoint_url,
+                name,
+                description,
+                json.dumps(databricks_metadata or {}),
+                json.dumps(admin_metadata or {}),
+                status
+            )
+        )
+        return result
+
+    def update_agent(
+        self,
+        agent_id: str,
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+        admin_metadata: Optional[Dict] = None,
+        status: Optional[str] = None
+    ) -> Optional[Dict]:
+        """Update agent fields (admin operations)."""
+        import json
+
+        updates = []
+        params = []
+
+        if name is not None:
+            updates.append("name = %s")
+            params.append(name)
+        if description is not None:
+            updates.append("description = %s")
+            params.append(description)
+        if admin_metadata is not None:
+            updates.append("admin_metadata = %s")
+            params.append(json.dumps(admin_metadata))
+        if status is not None:
+            updates.append("status = %s")
+            params.append(status)
+
+        if not updates:
+            return self.get_agent_by_id(agent_id)
+
+        params.append(agent_id)
+
+        return self.db.execute_query_one(
+            f"UPDATE autonomous_agents SET {', '.join(updates)} WHERE agent_id = %s RETURNING *",
+            tuple(params)
+        )
+
+    def delete_agent(self, agent_id: str) -> bool:
+        """Remove an agent from registry."""
+        result = self.db.execute_query_one(
+            "DELETE FROM autonomous_agents WHERE agent_id = %s RETURNING agent_id",
+            (agent_id,)
+        )
+        return result is not None
+
+
 # Global database instances
 db_manager = None
 chat_db = None
@@ -512,3 +635,9 @@ def initialize_database():
     except Exception as e:
         logger.warning(f"Schema initialization skipped or failed: {e}")
     return chat_db
+
+
+def initialize_autonomous_database() -> AutonomousAgentsDatabase:
+    """Initialize the autonomous agents database."""
+    db_manager = DatabaseManager()
+    return AutonomousAgentsDatabase(db_manager)
