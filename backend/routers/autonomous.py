@@ -248,3 +248,251 @@ async def delete_agent(
     logger.info(f"Agent {agent_id} deleted by {user.user_id}")
 
     return {"status": "deleted", "agent_id": agent_id}
+
+
+# ============ Autonomous Chat ============
+
+class AutonomousChatRequest(BaseModel):
+    message: str
+    conversation_history: Optional[List[Dict[str, str]]] = None
+    thread_id: Optional[str] = None
+
+
+class AutonomousChatResponse(BaseModel):
+    response: str
+    selected_agent: AgentResponse
+    routing_reason: str
+    thread_id: str
+    citations: Optional[List[Dict]] = None
+
+
+# Import OpenAI client setup
+from openai import OpenAI
+
+DATABRICKS_TOKEN = os.getenv("DATABRICKS_TOKEN", "")
+DATABRICKS_BASE_URL = os.getenv("DATABRICKS_BASE_URL", "")
+DATABRICKS_MODEL = os.getenv("DATABRICKS_MODEL", "")
+
+
+def get_databricks_client() -> OpenAI:
+    """Get OpenAI client for Databricks."""
+    return OpenAI(
+        api_key=DATABRICKS_TOKEN,
+        base_url=DATABRICKS_BASE_URL
+    )
+
+
+def build_router_prompt(agents: List[Dict], user_message: str, conversation_history: List[Dict]) -> str:
+    """Build the prompt for Claude to select an agent."""
+    agent_descriptions = "\n".join([
+        f"- **{a['name']}** (ID: {a['agent_id']}): {a.get('description', 'No description')}"
+        for a in agents
+    ])
+
+    history_context = ""
+    if conversation_history:
+        recent = conversation_history[-4:]  # Last 2 exchanges
+        history_context = "\n\nRecent conversation:\n" + "\n".join([
+            f"{msg['role'].upper()}: {msg['content'][:200]}..."
+            if len(msg['content']) > 200 else f"{msg['role'].upper()}: {msg['content']}"
+            for msg in recent
+        ])
+
+    return f"""You are an intelligent router that selects the best agent to handle a user's request.
+
+Available Agents:
+{agent_descriptions}
+
+User's current message: "{user_message}"
+{history_context}
+
+Based on the user's message and conversation context, select the SINGLE most appropriate agent.
+
+Respond in this exact JSON format:
+{{"agent_id": "<selected_agent_id>", "reason": "<brief explanation of why this agent is best suited>"}}
+
+IMPORTANT:
+- Only respond with the JSON, no other text
+- The agent_id must be one of the IDs listed above
+- Keep the reason concise (1-2 sentences)"""
+
+
+@router.post("/chat/autonomous")
+async def autonomous_chat(
+    request: AutonomousChatRequest = Body(...),
+    user: UserContext = Depends(get_current_user)
+):
+    """
+    Route message through Claude orchestrator to selected agent.
+
+    Flow:
+    1. Fetch enabled agents
+    2. Build router prompt
+    3. Claude selects agent
+    4. Forward to selected agent's endpoint
+    5. Return response with agent metadata
+    """
+    import json
+    from fastapi.responses import StreamingResponse
+    from database import initialize_database
+
+    chat_db = initialize_database()
+
+    # Get enabled agents
+    agents = agents_db.get_enabled_agents()
+    if not agents:
+        raise HTTPException(
+            status_code=400,
+            detail="No agents enabled for autonomous mode. Admin must enable at least one agent."
+        )
+
+    # If only one agent, skip routing
+    if len(agents) == 1:
+        selected_agent = agents[0]
+        routing_reason = "Only one agent available"
+    else:
+        # Build router prompt and get Claude's selection
+        router_prompt = build_router_prompt(
+            agents,
+            request.message,
+            request.conversation_history or []
+        )
+
+        client = get_databricks_client()
+
+        try:
+            # Use chat completions for routing decision
+            routing_response = client.chat.completions.create(
+                model=DATABRICKS_MODEL,
+                messages=[{"role": "user", "content": router_prompt}],
+                max_tokens=200,
+                temperature=0.1  # Low temperature for consistent routing
+            )
+
+            routing_text = routing_response.choices[0].message.content.strip()
+
+            # Parse routing decision
+            try:
+                routing_decision = json.loads(routing_text)
+                selected_id = routing_decision.get("agent_id")
+                routing_reason = routing_decision.get("reason", "No reason provided")
+
+                # Find the selected agent
+                selected_agent = next(
+                    (a for a in agents if a["agent_id"] == selected_id),
+                    None
+                )
+
+                if not selected_agent:
+                    # Fallback to first agent if routing fails
+                    logger.warning(f"Router selected unknown agent {selected_id}, falling back to first")
+                    selected_agent = agents[0]
+                    routing_reason = f"Fallback: router selected unknown agent"
+
+            except json.JSONDecodeError:
+                logger.warning(f"Failed to parse routing response: {routing_text}")
+                selected_agent = agents[0]
+                routing_reason = "Fallback: could not parse routing decision"
+
+        except Exception as e:
+            logger.error(f"Routing error: {e}")
+            selected_agent = agents[0]
+            routing_reason = f"Fallback: routing error"
+
+    # Create or get thread
+    thread_id = request.thread_id
+    if not thread_id:
+        thread_id = chat_db.create_thread(
+            user_id=user.user_id,
+            metadata={"mode": "autonomous", "initial_agent": selected_agent["agent_id"]}
+        )
+
+    # Save user message
+    user_msg_id = chat_db.save_message(
+        thread_id=thread_id,
+        user_id=user.user_id,
+        message_role="user",
+        message_content=request.message,
+        agent_endpoint=selected_agent["endpoint_url"],
+        metadata={"autonomous_mode": True}
+    )
+
+    # Forward to selected agent's endpoint
+    agent_endpoint = selected_agent["endpoint_url"]
+
+    def generate_stream():
+        try:
+            # Send routing metadata first
+            yield f"data: {json.dumps({'routing': {'agent': serialize_agent(selected_agent), 'reason': routing_reason}})}\n\n"
+
+            # Call the agent endpoint
+            import requests
+
+            agent_response = requests.post(
+                agent_endpoint,
+                headers={
+                    "Authorization": f"Bearer {DATABRICKS_TOKEN}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "messages": [
+                        *[{"role": m["role"], "content": m["content"]}
+                          for m in (request.conversation_history or [])],
+                        {"role": "user", "content": request.message}
+                    ]
+                },
+                stream=True,
+                timeout=120
+            )
+
+            if agent_response.status_code != 200:
+                yield f"data: {json.dumps({'error': f'Agent error: {agent_response.status_code}'})}\n\n"
+                return
+
+            full_response = ""
+
+            for line in agent_response.iter_lines():
+                if line:
+                    line_text = line.decode('utf-8')
+                    if line_text.startswith('data: '):
+                        try:
+                            data = json.loads(line_text[6:])
+                            if 'choices' in data and data['choices']:
+                                delta = data['choices'][0].get('delta', {})
+                                content = delta.get('content', '')
+                                if content:
+                                    full_response += content
+                                    yield f"data: {json.dumps({'content': content})}\n\n"
+                        except json.JSONDecodeError:
+                            continue
+
+            # Save assistant message
+            assistant_msg_id = chat_db.save_message(
+                thread_id=thread_id,
+                user_id=user.user_id,
+                message_role="assistant",
+                message_content=full_response,
+                agent_endpoint=agent_endpoint,
+                metadata={
+                    "autonomous_mode": True,
+                    "selected_agent_id": selected_agent["agent_id"],
+                    "routing_reason": routing_reason
+                }
+            )
+
+            # Send completion
+            yield f"data: {json.dumps({'done': True, 'thread_id': thread_id, 'assistant_message_id': assistant_msg_id})}\n\n"
+
+        except Exception as e:
+            logger.error(f"Autonomous chat error: {e}")
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+    return StreamingResponse(
+        generate_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
