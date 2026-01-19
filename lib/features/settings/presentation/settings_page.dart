@@ -3,6 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
 import '../providers/settings_provider.dart';
+import '../../autonomous/providers/autonomous_provider.dart';
+import '../../autonomous/services/autonomous_service.dart';
+import '../../autonomous/widgets/agent_card.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key});
@@ -12,6 +15,74 @@ class SettingsPage extends ConsumerStatefulWidget {
 }
 
 class _SettingsPageState extends ConsumerState<SettingsPage> {
+  bool _isDiscovering = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAgents();
+  }
+
+  Future<void> _loadAgents() async {
+    try {
+      final agents = await AutonomousService.getAllAgents();
+      ref.read(allAgentsProvider.notifier).setAgents(agents);
+    } catch (e) {
+      // Silently fail - agents list will be empty
+    }
+  }
+
+  Future<void> _discoverAgents() async {
+    if (_isDiscovering) return;
+
+    setState(() {
+      _isDiscovering = true;
+    });
+
+    try {
+      final result = await AutonomousService.discoverAgents();
+
+      if (mounted) {
+        if (result['error'] != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Discovery failed: ${result['error']}'),
+              behavior: SnackBarBehavior.floating,
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+          );
+        } else {
+          final discovered = result['discovered'] ?? 0;
+          final updated = result['updated'] ?? 0;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Discovered $discovered new agent(s), updated $updated existing'),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+          // Refresh the agents list
+          await _loadAgents();
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Discovery error: $e'),
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isDiscovering = false;
+        });
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
 
@@ -97,6 +168,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 ],
               ),
             ),
+
+            const SizedBox(height: 20),
+
+            // Autonomous Agents Section
+            _buildAutonomousAgentsSection(),
           ],
         ),
       ),
@@ -507,6 +583,106 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildAutonomousAgentsSection() {
+    final theme = Theme.of(context);
+    final appColors = context.appColors;
+    final agents = ref.watch(allAgentsProvider);
+
+    return _buildModernCard(
+      context,
+      icon: Icons.smart_toy_outlined,
+      title: 'Autonomous Agents',
+      subtitle: 'Manage AI agents for autonomous routing',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 16),
+
+          // Discover Agents Button
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _isDiscovering ? null : _discoverAgents,
+              icon: _isDiscovering
+                  ? SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          theme.colorScheme.onPrimary,
+                        ),
+                      ),
+                    )
+                  : const Icon(Icons.search, size: 18),
+              label: Text(_isDiscovering ? 'Discovering...' : 'Discover Agents'),
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // Agents List
+          if (agents.isEmpty)
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              width: double.infinity,
+              child: Column(
+                children: [
+                  Icon(
+                    Icons.smart_toy_outlined,
+                    size: 48,
+                    color: appColors.mutedForeground.withValues(alpha: 0.5),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'No agents discovered yet',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: appColors.mutedForeground,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Click "Discover Agents" to find available agents',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: appColors.mutedForeground.withValues(alpha: 0.7),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${agents.length} agent(s) found',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: appColors.mutedForeground,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                ...agents.map(
+                  (agent) => Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: AgentCard(
+                      agent: agent,
+                      onUpdated: _loadAgents,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+        ],
+      ),
     );
   }
 }
