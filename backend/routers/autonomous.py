@@ -116,8 +116,29 @@ async def discover_agents(user: UserContext = Depends(require_admin)):
 
     discovered_endpoints = []
 
-    # Try to get workspace client from user context
+    # Try to get workspace client from user context, fallback to app token
     workspace_client = user.get_workspace_client()
+
+    # Fallback: use app's DATABRICKS_TOKEN if user doesn't have a workspace client
+    if not workspace_client and DATABRICKS_TOKEN:
+        from databricks.sdk import WorkspaceClient
+        from urllib.parse import urlparse
+        try:
+            # Derive host from DATABRICKS_BASE_URL if DATABRICKS_HOST not set
+            host = os.getenv("DATABRICKS_HOST", "")
+            if not host:
+                base_url = DATABRICKS_BASE_URL
+                if base_url:
+                    parsed = urlparse(base_url)
+                    host = f"{parsed.scheme}://{parsed.netloc}"
+
+            if host:
+                workspace_client = WorkspaceClient(host=host, token=DATABRICKS_TOKEN)
+                logger.info(f"Using app token for discovery (host: {host})")
+            else:
+                logger.error("No DATABRICKS_HOST or DATABRICKS_BASE_URL configured")
+        except Exception as e:
+            logger.error(f"Failed to create workspace client with app token: {e}")
 
     if workspace_client:
         try:
@@ -147,9 +168,16 @@ async def discover_agents(user: UserContext = Depends(require_admin)):
                 endpoint_name = endpoint.name
                 # Construct endpoint URL
                 # Format: https://<workspace-host>/serving-endpoints/<name>/invocations
-                base_url = os.getenv("DATABRICKS_HOST", "")
-                if base_url:
-                    endpoint_url = f"{base_url}/serving-endpoints/{endpoint_name}/invocations"
+                # Use DATABRICKS_BASE_URL (strip /serving-endpoints suffix if present)
+                workspace_host = os.getenv("DATABRICKS_HOST", "")
+                if not workspace_host:
+                    base_url = DATABRICKS_BASE_URL
+                    if base_url:
+                        # Remove /serving-endpoints suffix to get workspace host
+                        workspace_host = base_url.replace("/serving-endpoints", "")
+
+                if workspace_host:
+                    endpoint_url = f"{workspace_host}/serving-endpoints/{endpoint_name}/invocations"
 
                     discovered_endpoints.append({
                         "endpoint_url": endpoint_url,
