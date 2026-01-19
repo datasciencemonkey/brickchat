@@ -109,8 +109,8 @@ async def discover_agents(user: UserContext = Depends(require_admin)):
     """
     Discover Agent Bricks from Databricks serving endpoints.
 
-    Fetches all serving endpoints, generates agent IDs, and merges with existing registry.
-    New endpoints get status='new', existing ones keep their status.
+    Fetches serving endpoints with task="agent/v1/responses", generates agent IDs,
+    and merges with existing registry. New endpoints get status='new', existing ones keep their status.
     """
     logger.info(f"Agent discovery triggered by {user.user_id}")
 
@@ -125,6 +125,25 @@ async def discover_agents(user: UserContext = Depends(require_admin)):
             endpoints = workspace_client.serving_endpoints.list()
 
             for endpoint in endpoints:
+                # Filter for agent endpoints only (task = "agent/v1/responses")
+                # Check the served_entities for the task type
+                is_agent_endpoint = False
+                endpoint_task = None
+
+                if hasattr(endpoint, 'config') and endpoint.config:
+                    served_entities = getattr(endpoint.config, 'served_entities', None) or []
+                    for entity in served_entities:
+                        task = getattr(entity, 'task', None)
+                        if task == "agent/v1/responses":
+                            is_agent_endpoint = True
+                            endpoint_task = task
+                            break
+
+                # Skip non-agent endpoints
+                if not is_agent_endpoint:
+                    logger.debug(f"Skipping non-agent endpoint: {endpoint.name}")
+                    continue
+
                 endpoint_name = endpoint.name
                 # Construct endpoint URL
                 # Format: https://<workspace-host>/serving-endpoints/<name>/invocations
@@ -135,13 +154,16 @@ async def discover_agents(user: UserContext = Depends(require_admin)):
                     discovered_endpoints.append({
                         "endpoint_url": endpoint_url,
                         "name": endpoint_name,
-                        "description": getattr(endpoint, 'description', None) or f"Databricks serving endpoint: {endpoint_name}",
+                        "description": getattr(endpoint, 'description', None) or f"Agent Brick: {endpoint_name}",
                         "databricks_metadata": {
                             "endpoint_name": endpoint_name,
+                            "task": endpoint_task,
                             "state": str(getattr(endpoint, 'state', {}).get('ready', 'unknown')),
                             "creator": getattr(endpoint, 'creator', None),
                         }
                     })
+
+                    logger.info(f"Discovered agent endpoint: {endpoint_name}")
         except Exception as e:
             logger.error(f"Databricks discovery failed: {e}")
             # Continue with empty list - admin can still add manually
