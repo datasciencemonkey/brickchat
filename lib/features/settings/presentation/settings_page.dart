@@ -26,9 +26,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   Future<void> _loadAgents() async {
     try {
       final agents = await AutonomousService.getAllAgents();
-      ref.read(allAgentsProvider.notifier).setAgents(agents);
+      if (mounted) {
+        ref.read(allAgentsProvider.notifier).setAgents(agents);
+      }
     } catch (e) {
       // Silently fail - agents list will be empty
+      debugPrint('Failed to load agents: $e');
     }
   }
 
