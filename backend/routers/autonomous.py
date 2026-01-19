@@ -481,7 +481,7 @@ async def autonomous_chat(
             )
 
             # Send completion
-            yield f"data: {json.dumps({'done': True, 'thread_id': thread_id, 'assistant_message_id': assistant_msg_id})}\n\n"
+            yield f"data: {json.dumps({'done': True, 'thread_id': thread_id, 'user_message_id': user_msg_id, 'assistant_message_id': assistant_msg_id})}\n\n"
 
         except Exception as e:
             logger.error(f"Autonomous chat error: {e}")
@@ -493,6 +493,8 @@ async def autonomous_chat(
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-            "X-Accel-Buffering": "no"
+            "X-Accel-Buffering": "no",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "*",
         }
     )
