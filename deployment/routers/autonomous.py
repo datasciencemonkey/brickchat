@@ -146,18 +146,32 @@ async def discover_agents(user: UserContext = Depends(require_admin)):
             endpoints = workspace_client.serving_endpoints.list()
 
             for endpoint in endpoints:
-                # Filter for agent endpoints only (task = "agent/v1/responses")
-                # Check the served_entities for the task type
+                # Filter for agent endpoints
+                # Detection methods:
+                # 1. Endpoint name starts with "agents_"
+                # 2. Entity name contains "agent"
+                # 3. Task type is "agent/v1/responses" (if available)
                 is_agent_endpoint = False
                 endpoint_task = None
 
+                # Check endpoint name pattern
+                if endpoint.name.startswith("agents_"):
+                    is_agent_endpoint = True
+
+                # Check served entities for agent indicators
                 if hasattr(endpoint, 'config') and endpoint.config:
                     served_entities = getattr(endpoint.config, 'served_entities', None) or []
                     for entity in served_entities:
+                        # Check task type
                         task = getattr(entity, 'task', None)
                         if task == "agent/v1/responses":
                             is_agent_endpoint = True
                             endpoint_task = task
+                            break
+                        # Check entity name for "agent"
+                        entity_name = getattr(entity, 'entity_name', '') or ''
+                        if 'agent' in entity_name.lower():
+                            is_agent_endpoint = True
                             break
 
                 # Skip non-agent endpoints
