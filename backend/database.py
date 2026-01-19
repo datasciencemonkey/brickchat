@@ -637,7 +637,13 @@ def initialize_database():
     return chat_db
 
 
+autonomous_db = None
+
 def initialize_autonomous_database() -> AutonomousAgentsDatabase:
     """Initialize the autonomous agents database."""
-    db_manager = DatabaseManager()
-    return AutonomousAgentsDatabase(db_manager)
+    global autonomous_db, db_manager
+    if autonomous_db is None:
+        if db_manager is None:
+            db_manager = DatabaseManager()
+        autonomous_db = AutonomousAgentsDatabase(db_manager)
+    return autonomous_db
