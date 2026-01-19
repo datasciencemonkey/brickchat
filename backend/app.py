@@ -7,7 +7,7 @@ import logging
 from dotenv import load_dotenv
 
 # Import routers
-from routers import health, chat, tts, feedback, auth, documents
+from routers import health, chat, tts, feedback, auth, documents, autonomous
 
 load_dotenv()
 
@@ -63,6 +63,7 @@ app.include_router(tts.router)
 app.include_router(feedback.router)
 app.include_router(auth.router)
 app.include_router(documents.router)
+app.include_router(autonomous.router)
 
 # Define API routes first, then serve static files
 # This ensures /api routes are matched before the catch-all static files
