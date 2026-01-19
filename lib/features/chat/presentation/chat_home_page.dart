@@ -26,6 +26,10 @@ import 'chat_history_page.dart';
 import 'widgets/welcome_hero_screen.dart';
 import 'widgets/document_chip.dart';
 import '../providers/documents_provider.dart';
+import '../../autonomous/providers/autonomous_provider.dart';
+import '../../autonomous/services/autonomous_service.dart';
+import '../../autonomous/presentation/widgets/autonomous_toggle.dart';
+import '../../autonomous/presentation/widgets/agent_badge.dart';
 
 class ChatHomePage extends ConsumerStatefulWidget {
   const ChatHomePage({super.key});
@@ -67,6 +71,7 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
     _sidebarController = SidebarXController(selectedIndex: 0, extended: false);
     // Don't load initial messages on welcome screen
     _loadAgentEndpoint();
+    _loadEnabledAgents();
   }
 
   Future<void> _loadAgentEndpoint() async {
@@ -79,6 +84,18 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
       }
     } catch (e) {
       _log.warning('Failed to load agent endpoint: $e');
+    }
+  }
+
+  Future<void> _loadEnabledAgents() async {
+    try {
+      final agents = await AutonomousService.getEnabledAgents();
+      if (mounted) {
+        ref.read(allAgentsProvider.notifier).setAgents(agents);
+      }
+    } catch (e) {
+      // Silently fail - autonomous mode just won't be available
+      _log.fine('Failed to load enabled agents: $e');
     }
   }
 
@@ -481,6 +498,13 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
     final messageText = text ?? _messageController.text.trim();
     if (messageText.isEmpty) return;
 
+    // Check if autonomous mode is enabled
+    final isAutonomous = ref.read(autonomousModeProvider);
+    if (isAutonomous) {
+      await _sendAutonomousMessage(messageText);
+      return;
+    }
+
     // Check if we have staged documents with bytes (not yet uploaded)
     final pendingDocs = ref.read(documentsProvider.notifier).pendingUploads;
     final hasPendingDocs = pendingDocs.isNotEmpty;
@@ -801,6 +825,152 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
     }
   }
 
+  /// Send message in autonomous mode - routes to appropriate agent
+  Future<void> _sendAutonomousMessage(String messageText) async {
+    final streamResults = ref.read(streamResultsProvider);
+
+    // Create user message
+    final userMessage = ChatMessage(
+      id: 'user_${DateTime.now().millisecondsSinceEpoch}',
+      text: messageText,
+      isOwn: true,
+      timestamp: DateTime.now(),
+      author: 'You',
+    );
+
+    setState(() {
+      _messages.add(userMessage);
+      _messageController.clear();
+      _showSpeechToText = false;
+      _showWelcomeScreen = false;
+    });
+
+    _scrollToBottom();
+
+    // Show typing indicator
+    final typingMessage = ChatMessage(
+      id: 'typing_${DateTime.now().millisecondsSinceEpoch}',
+      text: 'Routing to best agent...',
+      isOwn: false,
+      timestamp: DateTime.now(),
+      author: 'Assistant',
+    );
+
+    setState(() {
+      _messages.add(typingMessage);
+    });
+    _scrollToBottom();
+
+    // Allow typing indicator to show
+    await Future.delayed(const Duration(milliseconds: 500));
+
+    String fullResponse = '';
+    RoutingInfo? routingInfo;
+    final assistantMessageId = 'assistant_${DateTime.now().millisecondsSinceEpoch}';
+
+    try {
+      // Prepare conversation context
+      final conversationContext = _prepareConversationContext();
+
+      // Create streaming assistant message
+      final assistantMessage = ChatMessage(
+        id: assistantMessageId,
+        text: '',
+        isOwn: false,
+        timestamp: DateTime.now(),
+        author: 'Assistant',
+        isStreaming: true,
+      );
+
+      setState(() {
+        _messages.removeWhere((msg) => msg.id.startsWith('typing_'));
+        _messages.add(assistantMessage);
+      });
+
+      await for (final chunk in AutonomousService.sendAutonomousMessage(
+        messageText,
+        conversationHistory: conversationContext,
+        threadId: _currentThreadId,
+      )) {
+        if (!mounted) break;
+
+        if (chunk['error'] != null) {
+          // Handle error
+          final messageIndex = _messages.indexWhere((msg) => msg.id == assistantMessageId);
+          if (messageIndex != -1) {
+            _messages[messageIndex].text = 'Error: ${chunk['error']}';
+            _messages[messageIndex].isStreaming = false;
+            setState(() {});
+          }
+          return;
+        }
+
+        if (chunk['routing'] != null) {
+          routingInfo = RoutingInfo.fromJson(chunk['routing']);
+          // Update message with routing info
+          final messageIndex = _messages.indexWhere((msg) => msg.id == assistantMessageId);
+          if (messageIndex != -1) {
+            _messages[messageIndex].routingInfo = routingInfo;
+            _messages[messageIndex].agentEndpoint = routingInfo.agent.endpointUrl;
+            setState(() {});
+          }
+        }
+
+        if (chunk['content'] != null) {
+          fullResponse += chunk['content'];
+          if (streamResults) {
+            // Update streaming message
+            final messageIndex = _messages.indexWhere((msg) => msg.id == assistantMessageId);
+            if (messageIndex != -1) {
+              _messages[messageIndex].text = fullResponse;
+              setState(() {});
+              _scrollToBottom();
+            }
+          }
+        }
+
+        if (chunk['done'] == true) {
+          _currentThreadId = chunk['thread_id'];
+
+          // Finalize message
+          final messageIndex = _messages.indexWhere((msg) => msg.id == assistantMessageId);
+          if (messageIndex != -1) {
+            _messages[messageIndex].text = fullResponse;
+            _messages[messageIndex].isStreaming = false;
+            _messages[messageIndex].threadId = _currentThreadId;
+            _messages[messageIndex].messageId = chunk['assistant_message_id'];
+            setState(() {});
+          }
+
+          // Update conversation history
+          _conversationHistory.add({'role': 'user', 'content': messageText});
+          _conversationHistory.add({'role': 'assistant', 'content': fullResponse});
+
+          _scrollToBottom();
+        }
+      }
+    } catch (e) {
+      // Handle error
+      final messageIndex = _messages.indexWhere((msg) => msg.id == assistantMessageId);
+      if (messageIndex != -1 && mounted) {
+        _messages[messageIndex].text = 'Error: $e';
+        _messages[messageIndex].isStreaming = false;
+        setState(() {});
+      } else if (mounted) {
+        setState(() {
+          _messages.removeWhere((msg) => msg.id.startsWith('typing_'));
+          _messages.add(ChatMessage(
+            id: 'error_${DateTime.now().millisecondsSinceEpoch}',
+            text: 'Error: $e',
+            isOwn: false,
+            timestamp: DateTime.now(),
+            author: 'Assistant',
+          ));
+        });
+      }
+    }
+  }
+
   Future<void> _pickDocuments() async {
     final typeGroup = XTypeGroup(
       label: 'Documents',
@@ -1031,6 +1201,8 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
                       ),
                       centerTitle: false,
                       actions: [
+                        const AutonomousToggle(),
+                        const SizedBox(width: 8),
                         IconButton(
                           onPressed: _createNewThread,
                           icon: const Icon(Icons.add),
@@ -1434,6 +1606,12 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
                 if (!message.isOwn && message.citations.isNotEmpty)
                   SourcesAccordion(
                     citations: message.citations,
+                  ),
+                // Agent badge (only for autonomous mode messages with routing info)
+                if (!message.isOwn && message.routingInfo != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: AgentBadge(routingInfo: message.routingInfo!),
                   ),
                 const SizedBox(height: 4),
                 Row(
@@ -2619,6 +2797,7 @@ class ChatMessage {
   String? threadId; // Thread ID from backend
   String? messageId; // Message ID from backend database
   String? agentEndpoint; // Agent/model endpoint used for this message
+  RoutingInfo? routingInfo; // Routing info from autonomous mode (mutable for streaming)
 
   ChatMessage({
     required this.id,
@@ -2631,6 +2810,7 @@ class ChatMessage {
     this.agentEndpoint,
     this.isLiked,
     this.isStreaming = false,
+    this.routingInfo,
     List<Map<String, String>>? footnotes,
     List<Map<String, dynamic>>? citations,
   }) : footnotes = footnotes ?? [],
