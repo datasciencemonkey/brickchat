@@ -42,12 +42,12 @@ class AgentResponse(BaseModel):
     agent_id: str
     endpoint_url: str
     name: str
-    description: Optional[str]
-    databricks_metadata: Dict[str, Any]
-    admin_metadata: Dict[str, Any]
+    description: Optional[str] = None
+    databricks_metadata: Dict[str, Any] = {}
+    admin_metadata: Dict[str, Any] = {}
     status: str
-    created_at: str
-    updated_at: str
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
 
 
 class DiscoveryResponse(BaseModel):
