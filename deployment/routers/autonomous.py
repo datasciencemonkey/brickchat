@@ -116,101 +116,61 @@ async def discover_agents(user: UserContext = Depends(require_admin)):
 
     discovered_endpoints = []
 
-    # Try to get workspace client from user context, fallback to app token
-    workspace_client = user.get_workspace_client()
+    # Use REST API directly to get task field (SDK doesn't expose it)
+    import requests
+    from urllib.parse import urlparse
 
-    # Fallback: use app's DATABRICKS_TOKEN if user doesn't have a workspace client
-    if not workspace_client and DATABRICKS_TOKEN:
-        from databricks.sdk import WorkspaceClient
-        from urllib.parse import urlparse
+    # Derive workspace host
+    workspace_host = os.getenv("DATABRICKS_HOST", "")
+    if not workspace_host and DATABRICKS_BASE_URL:
+        workspace_host = DATABRICKS_BASE_URL.replace("/serving-endpoints", "")
+
+    # Get token (prefer user token, fallback to app token)
+    token = user.access_token if user.access_token else DATABRICKS_TOKEN
+
+    if workspace_host and token:
         try:
-            # Derive host from DATABRICKS_BASE_URL if DATABRICKS_HOST not set
-            host = os.getenv("DATABRICKS_HOST", "")
-            if not host:
-                base_url = DATABRICKS_BASE_URL
-                if base_url:
-                    parsed = urlparse(base_url)
-                    host = f"{parsed.scheme}://{parsed.netloc}"
+            # Call REST API directly
+            api_url = f"{workspace_host}/api/2.0/serving-endpoints"
+            headers = {"Authorization": f"Bearer {token}"}
 
-            if host:
-                workspace_client = WorkspaceClient(host=host, token=DATABRICKS_TOKEN)
-                logger.info(f"Using app token for discovery (host: {host})")
-            else:
-                logger.error("No DATABRICKS_HOST or DATABRICKS_BASE_URL configured")
-        except Exception as e:
-            logger.error(f"Failed to create workspace client with app token: {e}")
+            logger.info(f"Fetching endpoints from: {api_url}")
+            response = requests.get(api_url, headers=headers, timeout=30)
+            response.raise_for_status()
 
-    if workspace_client:
-        try:
-            # Fetch serving endpoints from Databricks
-            endpoints = workspace_client.serving_endpoints.list()
+            data = response.json()
+            endpoints = data.get("endpoints", [])
 
-            for endpoint in endpoints:
-                # Filter for agent endpoints
-                # Detection methods:
-                # 1. Endpoint name starts with "agents_"
-                # 2. Entity name contains "agent"
-                # 3. Task type is "agent/v1/responses" (if available)
-                is_agent_endpoint = False
-                endpoint_task = None
-
-                # Check endpoint name pattern
-                if endpoint.name.startswith("agents_"):
-                    is_agent_endpoint = True
-
-                # Check served entities for agent indicators
-                if hasattr(endpoint, 'config') and endpoint.config:
-                    served_entities = getattr(endpoint.config, 'served_entities', None) or []
-                    for entity in served_entities:
-                        # Check task type
-                        task = getattr(entity, 'task', None)
-                        if task == "agent/v1/responses":
-                            is_agent_endpoint = True
-                            endpoint_task = task
-                            break
-                        # Check entity name for "agent"
-                        entity_name = getattr(entity, 'entity_name', '') or ''
-                        if 'agent' in entity_name.lower():
-                            is_agent_endpoint = True
-                            break
-
-                # Skip non-agent endpoints
-                if not is_agent_endpoint:
-                    logger.debug(f"Skipping non-agent endpoint: {endpoint.name}")
+            for ep in endpoints:
+                # Filter for agent endpoints by task type
+                task = ep.get("task")
+                if task != "agent/v1/responses":
+                    logger.debug(f"Skipping non-agent endpoint: {ep.get('name')} (task={task})")
                     continue
 
-                endpoint_name = endpoint.name
-                # Construct endpoint URL
-                # Format: https://<workspace-host>/serving-endpoints/<name>/invocations
-                # Use DATABRICKS_BASE_URL (strip /serving-endpoints suffix if present)
-                workspace_host = os.getenv("DATABRICKS_HOST", "")
-                if not workspace_host:
-                    base_url = DATABRICKS_BASE_URL
-                    if base_url:
-                        # Remove /serving-endpoints suffix to get workspace host
-                        workspace_host = base_url.replace("/serving-endpoints", "")
+                endpoint_name = ep.get("name")
+                endpoint_url = f"{workspace_host}/serving-endpoints/{endpoint_name}/invocations"
 
-                if workspace_host:
-                    endpoint_url = f"{workspace_host}/serving-endpoints/{endpoint_name}/invocations"
+                discovered_endpoints.append({
+                    "endpoint_url": endpoint_url,
+                    "name": endpoint_name,
+                    "description": ep.get("description") or f"Agent Brick: {endpoint_name}",
+                    "databricks_metadata": {
+                        "endpoint_name": endpoint_name,
+                        "task": task,
+                        "state": ep.get("state", {}).get("ready", "unknown"),
+                        "creator": ep.get("creator"),
+                        "id": ep.get("id"),
+                    }
+                })
 
-                    discovered_endpoints.append({
-                        "endpoint_url": endpoint_url,
-                        "name": endpoint_name,
-                        "description": getattr(endpoint, 'description', None) or f"Agent Brick: {endpoint_name}",
-                        "databricks_metadata": {
-                            "endpoint_name": endpoint_name,
-                            "task": endpoint_task,
-                            "state": str(getattr(endpoint, 'state', {}).get('ready', 'unknown')),
-                            "creator": getattr(endpoint, 'creator', None),
-                        }
-                    })
+                logger.info(f"Discovered agent endpoint: {endpoint_name}")
 
-                    logger.info(f"Discovered agent endpoint: {endpoint_name}")
         except Exception as e:
             logger.error(f"Databricks discovery failed: {e}")
             # Continue with empty list - admin can still add manually
     else:
-        logger.warning("No workspace client available - discovery will return empty results")
+        logger.warning("No workspace host or token available - discovery will return empty results")
 
     # Process discovered endpoints
     new_count = 0
