@@ -198,10 +198,10 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
     }
   }
 
-  /// Load a thread conversation with messages, documents, and model type.
+  /// Load a thread conversation with messages, documents, model type, and autonomous mode.
   /// Documents come from the same API response as messages (stored in Postgres),
   /// enabling instant chip reconstruction without slow volume access.
-  void _loadThreadConversation(String? threadId, List<Map<String, dynamic>> messages, [List<Map<String, dynamic>>? documents, String? threadModelType]) {
+  void _loadThreadConversation(String? threadId, List<Map<String, dynamic>> messages, [List<Map<String, dynamic>>? documents, String? threadModelType, bool? autonomousMode]) {
     if (threadId == null || threadId == 'null') {
       // Start new thread
       _createNewThread();
@@ -214,6 +214,11 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
 
     // Set thread model type for upload button visibility
     ref.read(threadModelTypeProvider.notifier).state = threadModelType.toThreadModelType();
+
+    // Restore autonomous mode if it was set for this thread
+    if (autonomousMode != null) {
+      ref.read(autonomousModeProvider.notifier).setAutonomousMode(autonomousMode);
+    }
 
     setState(() {
       // Clear current messages
@@ -593,11 +598,15 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
         final responseBuffer = StringBuffer();
         List<Map<String, dynamic>> citations = [];
 
+        // Get current autonomous mode state to persist with thread
+        final isAutonomous = ref.read(autonomousModeProvider);
+
         await for (final chunk in FastApiService.sendMessageStream(
           messageText,
           conversationHistory: conversationContext,
           threadId: _currentThreadId,
           userId: _userId,
+          autonomousMode: isAutonomous,
         )) {
           if (mounted) {
             // Handle metadata (thread_id, message_ids, agent_endpoint)
@@ -727,11 +736,15 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
         }
       } else {
         // Non-streaming mode - get complete response first
+        // Get current autonomous mode state to persist with thread
+        final isAutonomous = ref.read(autonomousModeProvider);
+
         final response = await FastApiService.sendMessage(
           messageText,
           conversationHistory: conversationContext,
           threadId: _currentThreadId,
           userId: _userId,
+          autonomousMode: isAutonomous,
         );
 
         if (mounted) {
@@ -1201,8 +1214,6 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
                       ),
                       centerTitle: false,
                       actions: [
-                        const AutonomousToggle(),
-                        const SizedBox(width: 8),
                         IconButton(
                           onPressed: _createNewThread,
                           icon: const Icon(Icons.add),
@@ -2017,10 +2028,17 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
             },
           ),
 
-          // Agent endpoint display (always visible in bottom right)
-          Align(
-            alignment: Alignment.centerRight,
-            child: _buildAgentEndpointDisplay(),
+          // Agent endpoint display (hidden when autonomous mode is enabled)
+          Consumer(
+            builder: (context, ref, _) {
+              final isAutonomous = ref.watch(autonomousModeProvider);
+              // Hide endpoint chip when autonomous mode is on - routing is automatic
+              if (isAutonomous) return const SizedBox.shrink();
+              return Align(
+                alignment: Alignment.centerRight,
+                child: _buildAgentEndpointDisplay(),
+              );
+            },
           ),
           const SizedBox(height: AppConstants.spacingSm),
 
@@ -2049,6 +2067,32 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
                               : 'Document upload not available in this thread',
                         );
                       },
+                    ),
+                    // Suffix icons: Autonomous toggle + Microphone
+                    suffixIcon: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Autonomous mode toggle (dharma wheel)
+                        const AutonomousIconButton(),
+                        // Microphone button
+                        Builder(
+                          builder: (context) {
+                            final shortcut = ref.watch(voiceShortcutProvider);
+                            return IconButton(
+                              onPressed: _toggleVoiceInput,
+                              icon: Icon(
+                                _showSpeechToText ? Icons.keyboard : Icons.mic,
+                                color: _showSpeechToText
+                                  ? Theme.of(context).colorScheme.primary
+                                  : null,
+                              ),
+                              tooltip: _showSpeechToText
+                                  ? 'Hide voice input (${shortcut.displayName})'
+                                  : 'Voice input (${shortcut.displayName})',
+                            );
+                          },
+                        ),
+                      ],
                     ),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(AppConstants.radiusLg),
@@ -2084,27 +2128,6 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
                 ),
               ),
               const SizedBox(width: AppConstants.spacingSm),
-
-              // Microphone button
-              Builder(
-                builder: (context) {
-                  final shortcut = ref.watch(voiceShortcutProvider);
-                  return IconButton(
-                    onPressed: _toggleVoiceInput,
-                    icon: Icon(
-                      _showSpeechToText ? Icons.keyboard : Icons.mic,
-                      color: _showSpeechToText
-                        ? Theme.of(context).colorScheme.primary
-                        : null,
-                    ),
-                    tooltip: _showSpeechToText
-                        ? 'Hide voice input (${shortcut.displayName})'
-                        : 'Voice input (${shortcut.displayName})',
-                  );
-                },
-              ),
-
-              const SizedBox(width: AppConstants.spacingXs),
 
               // Send button
               IconButton(

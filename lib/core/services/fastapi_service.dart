@@ -20,6 +20,7 @@ class FastApiService {
     List<Map<String, String>>? conversationHistory,
     String? threadId,
     String userId = "dev_user",
+    bool? autonomousMode,
   }) async {
     try {
       final url = Uri.parse('$baseUrl/api/chat/send');
@@ -34,6 +35,11 @@ class FastApiService {
       // Add thread ID if provided
       if (threadId != null) {
         requestBody['thread_id'] = threadId;
+      }
+
+      // Add autonomous mode if provided (for thread persistence)
+      if (autonomousMode != null) {
+        requestBody['autonomous_mode'] = autonomousMode;
       }
 
       // Add conversation history if provided
@@ -82,6 +88,7 @@ class FastApiService {
     List<Map<String, String>>? conversationHistory,
     String? threadId,
     String userId = "dev_user",
+    bool? autonomousMode,
   }) async* {
     try {
       final url = Uri.parse('$baseUrl/api/chat/send');
@@ -96,6 +103,11 @@ class FastApiService {
       // Add thread ID if provided
       if (threadId != null) {
         requestBody['thread_id'] = threadId;
+      }
+
+      // Add autonomous mode if provided (for thread persistence)
+      if (autonomousMode != null) {
+        requestBody['autonomous_mode'] = autonomousMode;
       }
 
       // Add conversation history if provided
@@ -385,7 +397,7 @@ class FastApiService {
   }
 
   /// Fetch all messages and documents for a specific thread
-  /// Returns a map with 'messages', 'documents', and 'thread_model_type'
+  /// Returns a map with 'messages', 'documents', 'thread_model_type', and 'autonomous_mode'
   static Future<Map<String, dynamic>> getThreadMessages(String threadId) async {
     try {
       final url = Uri.parse('$baseUrl/api/chat/threads/$threadId/messages');
@@ -401,14 +413,15 @@ class FastApiService {
           'messages': List<Map<String, dynamic>>.from(data['messages'] ?? []),
           'documents': List<Map<String, dynamic>>.from(data['documents'] ?? []),
           'thread_model_type': data['thread_model_type'], // 'standard', 'document', or null
+          'autonomous_mode': data['autonomous_mode'], // true, false, or null
         };
       } else {
         print('Error fetching thread messages: ${response.statusCode} - ${response.body}');
-        return {'messages': [], 'documents': [], 'thread_model_type': null};
+        return {'messages': [], 'documents': [], 'thread_model_type': null, 'autonomous_mode': null};
       }
     } catch (e) {
       print('Error fetching thread messages: $e');
-      return {'messages': [], 'documents': [], 'thread_model_type': null};
+      return {'messages': [], 'documents': [], 'thread_model_type': null, 'autonomous_mode': null};
     }
   }
 

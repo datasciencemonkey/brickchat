@@ -477,6 +477,54 @@ class ChatDatabase:
             logger.info(f"[DB] Thread {thread_id} locked to model type: {model_type}")
         return result is not None
 
+    def get_thread_autonomous_mode(self, thread_id: str) -> Optional[bool]:
+        """
+        Get the autonomous mode setting for this thread.
+
+        Returns:
+            True - Thread uses autonomous mode (intelligent routing)
+            False - Thread uses standard mode (fixed endpoint)
+            None - Fresh thread (mode not yet set)
+        """
+        query = """
+            SELECT metadata->>'autonomous_mode' as autonomous_mode
+            FROM chat_threads
+            WHERE thread_id = %s
+        """
+        result = self.db.execute_query_one(query, (thread_id,))
+        if result and result.get('autonomous_mode') is not None:
+            return result['autonomous_mode'] == 'true'
+        return None
+
+    def set_thread_autonomous_mode(self, thread_id: str, enabled: bool) -> bool:
+        """
+        Set the autonomous mode for a thread (only if not already set).
+
+        This is idempotent - first write wins. If a thread already has autonomous mode set,
+        this method will not change it and will return False.
+
+        Args:
+            thread_id: The thread UUID
+            enabled: True for autonomous mode, False for standard mode
+
+        Returns:
+            True if autonomous mode was set, False if already set or thread doesn't exist
+        """
+        query = """
+            UPDATE chat_threads
+            SET metadata = COALESCE(metadata, '{}'::jsonb) || %s
+            WHERE thread_id = %s
+            AND (metadata->>'autonomous_mode' IS NULL)
+            RETURNING thread_id
+        """
+        result = self.db.execute_query_one(
+            query,
+            (Json({"autonomous_mode": str(enabled).lower()}), thread_id)
+        )
+        if result:
+            logger.info(f"[DB] Thread {thread_id} autonomous mode set to: {enabled}")
+        return result is not None
+
     def initialize_schema(self):
         """Initialize database schema"""
         schema_path = os.path.join(os.path.dirname(__file__), 'schema.sql')

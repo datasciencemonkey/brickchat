@@ -11,6 +11,8 @@ import '../../core/constants/app_constants.dart';
 class SpeechToTextWidget extends ConsumerStatefulWidget {
   final Function(String) onTextRecognized;
   final VoidCallback? onCancel;
+  /// Called when user manually submits recognized text via the submit button
+  final Function(String)? onSubmit;
   final String? hintText;
   final bool autoStart;
 
@@ -18,6 +20,7 @@ class SpeechToTextWidget extends ConsumerStatefulWidget {
     super.key,
     required this.onTextRecognized,
     this.onCancel,
+    this.onSubmit,
     this.hintText,
     this.autoStart = true,
   });
@@ -195,6 +198,31 @@ class _SpeechToTextWidgetState extends ConsumerState<SpeechToTextWidget>
     widget.onCancel?.call();
   }
 
+  /// Manually submit the current recognized text
+  void _submitText() async {
+    if (_recognizedText.isEmpty) return;
+
+    final textToSubmit = _recognizedText;
+    await _speechToText.stop();
+
+    if (mounted) {
+      setState(() {
+        _isListening = false;
+        _recognizedText = '';
+        _errorMessage = '';
+      });
+      _stopAnimations();
+    }
+
+    // Use onSubmit if provided, otherwise fall back to onTextRecognized
+    if (widget.onSubmit != null) {
+      widget.onSubmit!(textToSubmit);
+    } else {
+      widget.onTextRecognized(textToSubmit);
+    }
+    widget.onCancel?.call();
+  }
+
   bool _handleKeyEvent(KeyEvent event) {
     if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.escape) {
       _cancelListening();
@@ -302,72 +330,106 @@ class _SpeechToTextWidgetState extends ConsumerState<SpeechToTextWidget>
 
           SizedBox(height: AppConstants.spacingMd),
 
-          // Microphone button with animations
-          GestureDetector(
-            onTap: _speechEnabled
-                ? (_isListening ? _stopListening : _startListening)
-                : null,
-            child: Container(
-              width: AppConstants.speechMicrophoneSize,
-              height: AppConstants.speechMicrophoneSize,
-              decoration: BoxDecoration(
-                color: _isListening
-                    ? colorScheme.primary
-                    : _speechEnabled
-                        ? colorScheme.primaryContainer
-                        : extension.muted,
-                shape: BoxShape.circle,
-              ),
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  // Outer ripple effect when listening
-                  if (_isListening)
-                    AnimatedBuilder(
-                      animation: _waveController,
-                      builder: (context, child) {
-                        return Container(
-                          width: AppConstants.speechMicrophoneSize + (AppConstants.speechWaveExpansion * _waveController.value),
-                          height: AppConstants.speechMicrophoneSize + (AppConstants.speechWaveExpansion * _waveController.value),
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: colorScheme.primary.withValues(
-                                alpha: 0.3 * (1 - _waveController.value),
-                              ),
-                              width: AppConstants.speechWaveBorderWidth,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-
-                  // Pulse effect
-                  AnimatedBuilder(
-                    animation: _pulseController,
-                    builder: (context, child) {
-                      return Transform.scale(
-                        scale: _isListening ? (1.0 + (0.1 * _pulseController.value)) : 1.0,
-                        child: Icon(
-                          _isListening ? Icons.mic : Icons.mic_none,
-                          size: AppConstants.speechMicrophoneIconSize,
-                          color: _isListening
-                              ? colorScheme.onPrimary
-                              : _speechEnabled
-                                  ? colorScheme.onPrimaryContainer
-                                  : extension.mutedForeground,
-                        ),
-                      );
-                    },
+          // Microphone and Submit buttons row
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // Microphone button with animations
+              GestureDetector(
+                onTap: _speechEnabled
+                    ? (_isListening ? _stopListening : _startListening)
+                    : null,
+                child: Container(
+                  width: AppConstants.speechMicrophoneSize,
+                  height: AppConstants.speechMicrophoneSize,
+                  decoration: BoxDecoration(
+                    color: _isListening
+                        ? colorScheme.primary
+                        : _speechEnabled
+                            ? colorScheme.primaryContainer
+                            : extension.muted,
+                    shape: BoxShape.circle,
                   ),
-                ],
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      // Outer ripple effect when listening
+                      if (_isListening)
+                        AnimatedBuilder(
+                          animation: _waveController,
+                          builder: (context, child) {
+                            return Container(
+                              width: AppConstants.speechMicrophoneSize + (AppConstants.speechWaveExpansion * _waveController.value),
+                              height: AppConstants.speechMicrophoneSize + (AppConstants.speechWaveExpansion * _waveController.value),
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: colorScheme.primary.withValues(
+                                    alpha: 0.3 * (1 - _waveController.value),
+                                  ),
+                                  width: AppConstants.speechWaveBorderWidth,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+
+                      // Pulse effect
+                      AnimatedBuilder(
+                        animation: _pulseController,
+                        builder: (context, child) {
+                          return Transform.scale(
+                            scale: _isListening ? (1.0 + (0.1 * _pulseController.value)) : 1.0,
+                            child: Icon(
+                              _isListening ? Icons.mic : Icons.mic_none,
+                              size: AppConstants.speechMicrophoneIconSize,
+                              color: _isListening
+                                  ? colorScheme.onPrimary
+                                  : _speechEnabled
+                                      ? colorScheme.onPrimaryContainer
+                                      : extension.mutedForeground,
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ).animate(target: _isListening ? 1 : 0).scaleXY(
+                  begin: 1.0,
+                  end: 1.05,
+                  duration: 200.ms,
+                  curve: Curves.easeInOut,
+                ),
               ),
-            ).animate(target: _isListening ? 1 : 0).scaleXY(
-              begin: 1.0,
-              end: 1.05,
-              duration: 200.ms,
-              curve: Curves.easeInOut,
-            ),
+
+              const SizedBox(width: 16),
+
+              // Submit button - enabled when text is recognized
+              AnimatedOpacity(
+                opacity: _recognizedText.isNotEmpty ? 1.0 : 0.4,
+                duration: const Duration(milliseconds: 200),
+                child: GestureDetector(
+                  onTap: _recognizedText.isNotEmpty ? _submitText : null,
+                  child: Container(
+                    width: AppConstants.speechMicrophoneSize,
+                    height: AppConstants.speechMicrophoneSize,
+                    decoration: BoxDecoration(
+                      color: _recognizedText.isNotEmpty
+                          ? colorScheme.primary
+                          : extension.muted,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.send,
+                      size: AppConstants.speechMicrophoneIconSize,
+                      color: _recognizedText.isNotEmpty
+                          ? colorScheme.onPrimary
+                          : extension.mutedForeground,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
 
           SizedBox(height: AppConstants.spacingMd),

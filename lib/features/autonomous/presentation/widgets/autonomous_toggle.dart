@@ -14,6 +14,41 @@ class AutonomousToggle extends ConsumerStatefulWidget {
   ConsumerState<AutonomousToggle> createState() => _AutonomousToggleState();
 }
 
+/// Compact autonomous mode icon button for use inside TextField suffix
+/// Uses dharma wheel (☸) icon with color change when enabled
+class AutonomousIconButton extends ConsumerWidget {
+  const AutonomousIconButton({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final appColors = context.appColors;
+    final isAvailable = ref.watch(autonomousModeAvailableProvider);
+    final isEnabled = ref.watch(autonomousModeProvider);
+
+    // Don't show if no agents are enabled
+    if (!isAvailable) {
+      return const SizedBox.shrink();
+    }
+
+    return IconButton(
+      onPressed: () {
+        ref.read(autonomousModeProvider.notifier).toggle();
+      },
+      tooltip: isEnabled ? 'Autonomous mode (on)' : 'Autonomous mode (off)',
+      icon: Text(
+        '\u2638', // Unicode dharma wheel ☸
+        style: TextStyle(
+          fontSize: 20,
+          color: isEnabled
+              ? theme.colorScheme.primary
+              : appColors.mutedForeground,
+        ),
+      ),
+    );
+  }
+}
+
 class _AutonomousToggleState extends ConsumerState<AutonomousToggle>
     with SingleTickerProviderStateMixin {
   late AnimationController _animationController;

@@ -382,12 +382,17 @@ async def get_thread_messages(
         # Returns 'standard', 'document', or None (fresh thread)
         thread_model_type = chat_db.get_thread_model_type(thread_id)
 
+        # Get autonomous mode setting for thread
+        # Returns True, False, or None (fresh thread)
+        autonomous_mode = chat_db.get_thread_autonomous_mode(thread_id)
+
         return {
             "messages": messages,
             "limit": limit,
             "offset": offset,
             "documents": documents,  # Include document metadata for chip reconstruction
-            "thread_model_type": thread_model_type  # For upload button visibility
+            "thread_model_type": thread_model_type,  # For upload button visibility
+            "autonomous_mode": autonomous_mode  # For restoring autonomous toggle state
         }
     except Exception as e:
         logger.error(f"Error fetching thread messages: {str(e)}")
@@ -426,6 +431,12 @@ async def send_message(message: dict, user: UserContext = Depends(get_current_us
         if not thread_id:
             thread_id = chat_db.create_thread(user_id=user_id)
             logger.info(f"Created new thread: {thread_id}")
+
+        # Extract and save autonomous mode setting (first-write wins)
+        autonomous_mode = message.get("autonomous_mode")
+        if autonomous_mode is not None:
+            # Only sets if not already set (idempotent)
+            chat_db.set_thread_autonomous_mode(thread_id, autonomous_mode)
 
         # Check if thread has documents and whether we need to reload them
         has_documents = False
