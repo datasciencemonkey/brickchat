@@ -78,6 +78,7 @@ class AutonomousService {
     String? name,
     String? description,
     Map<String, dynamic>? adminMetadata,
+    String? routerMetadata,
     String? status,
   }) async {
     try {
@@ -87,6 +88,7 @@ class AutonomousService {
       if (name != null) body['name'] = name;
       if (description != null) body['description'] = description;
       if (adminMetadata != null) body['admin_metadata'] = adminMetadata;
+      if (routerMetadata != null) body['router_metadata'] = routerMetadata;
       if (status != null) body['status'] = status;
 
       final response = await http.put(

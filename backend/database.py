@@ -510,6 +510,35 @@ class AutonomousAgentsDatabase:
 
     def __init__(self, db_manager: DatabaseManager):
         self.db = db_manager
+        self._initialize_schema()
+
+    def _initialize_schema(self):
+        """Initialize the autonomous_agents table schema."""
+        schema_path = os.path.join(os.path.dirname(__file__), 'migrations', 'autonomous_agents.sql')
+        if os.path.exists(schema_path):
+            with open(schema_path, 'r') as f:
+                schema = f.read()
+
+            conn = None
+            try:
+                conn = self.db.get_connection()
+                with conn.cursor() as cursor:
+                    cursor.execute(schema)
+                    conn.commit()
+                logger.info("Autonomous agents schema initialized successfully")
+            except Exception as e:
+                if conn:
+                    conn.rollback()
+                # Only log as debug for expected errors like existing objects
+                if "already exists" in str(e):
+                    logger.debug(f"Autonomous agents schema objects already exist: {e}")
+                else:
+                    logger.error(f"Autonomous agents schema initialization failed: {e}")
+            finally:
+                if conn:
+                    self.db.put_connection(conn)
+        else:
+            logger.warning(f"Autonomous agents migration file not found at: {schema_path}")
 
     def get_agent_by_id(self, agent_id: str) -> Optional[Dict]:
         """Get a single agent by ID."""
@@ -580,6 +609,7 @@ class AutonomousAgentsDatabase:
         name: Optional[str] = None,
         description: Optional[str] = None,
         admin_metadata: Optional[Dict] = None,
+        router_metadata: Optional[str] = None,
         status: Optional[str] = None
     ) -> Optional[Dict]:
         """Update agent fields (admin operations)."""
@@ -597,6 +627,9 @@ class AutonomousAgentsDatabase:
         if admin_metadata is not None:
             updates.append("admin_metadata = %s")
             params.append(json.dumps(admin_metadata))
+        if router_metadata is not None:
+            updates.append("router_metadata = %s")
+            params.append(router_metadata)
         if status is not None:
             updates.append("status = %s")
             params.append(status)

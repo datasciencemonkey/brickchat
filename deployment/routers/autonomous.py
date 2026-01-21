@@ -13,6 +13,7 @@ import os
 import logging
 from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, HTTPException, Body, Depends
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from database import initialize_autonomous_database, generate_agent_id
@@ -35,6 +36,7 @@ class AgentUpdateRequest(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     admin_metadata: Optional[Dict[str, Any]] = None
+    router_metadata: Optional[str] = None
     status: Optional[str] = None
 
 
@@ -45,6 +47,7 @@ class AgentResponse(BaseModel):
     description: Optional[str] = None
     databricks_metadata: Dict[str, Any] = {}
     admin_metadata: Dict[str, Any] = {}
+    router_metadata: Optional[str] = None
     status: str
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
@@ -96,6 +99,7 @@ def serialize_agent(agent: Dict) -> Dict:
         "description": agent.get("description"),
         "databricks_metadata": agent.get("databricks_metadata") or {},
         "admin_metadata": agent.get("admin_metadata") or {},
+        "router_metadata": agent.get("router_metadata"),
         "status": agent["status"],
         "created_at": agent["created_at"].isoformat() if agent.get("created_at") else None,
         "updated_at": agent["updated_at"].isoformat() if agent.get("updated_at") else None,
@@ -216,27 +220,31 @@ async def discover_agents(user: UserContext = Depends(require_admin)):
 
 # ============ Agent CRUD ============
 
-@router.get("", response_model=List[AgentResponse])
+@router.get("")
 async def get_enabled_agents(user: UserContext = Depends(get_current_user)):
     """Get all enabled agents (for router/chat use)."""
     agents = agents_db.get_enabled_agents()
-    return [serialize_agent(a) for a in agents]
+    return JSONResponse(content=[serialize_agent(a) for a in agents])
 
 
-@router.get("/all", response_model=List[AgentResponse])
+@router.get("/all")
 async def get_all_agents(user: UserContext = Depends(require_admin)):
     """Get all agents regardless of status (for admin UI)."""
     agents = agents_db.get_all_agents()
-    return [serialize_agent(a) for a in agents]
+    result = [serialize_agent(a) for a in agents]
+    # Use JSONResponse to bypass FastAPI's default serialization which may exclude None
+    return JSONResponse(content=result)
 
 
-@router.put("/{agent_id}", response_model=AgentResponse)
+@router.put("/{agent_id}")
 async def update_agent(
     agent_id: str,
     update: AgentUpdateRequest = Body(...),
     user: UserContext = Depends(require_admin)
 ):
     """Update agent metadata or status."""
+    logger.info(f"PUT /agents/{agent_id} received: name={update.name}, status={update.status}, router_metadata={repr(update.router_metadata)[:50]}")
+
     existing = agents_db.get_agent_by_id(agent_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Agent not found")
@@ -250,12 +258,15 @@ async def update_agent(
         name=update.name,
         description=update.description,
         admin_metadata=update.admin_metadata,
+        router_metadata=update.router_metadata,
         status=update.status
     )
 
-    logger.info(f"Agent {agent_id} updated by {user.user_id}: status={update.status}")
+    logger.info(f"DB update result: router_metadata={repr(updated.get('router_metadata') if updated else None)[:50]}")
 
-    return serialize_agent(updated)
+    logger.info(f"Agent {agent_id} updated by {user.user_id}: status={update.status}, router_metadata={'set' if update.router_metadata else 'unchanged'}")
+
+    return JSONResponse(content=serialize_agent(updated))
 
 
 @router.delete("/{agent_id}")

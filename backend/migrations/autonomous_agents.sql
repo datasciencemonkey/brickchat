@@ -8,10 +8,22 @@ CREATE TABLE IF NOT EXISTS autonomous_agents (
     description TEXT,
     databricks_metadata JSONB DEFAULT '{}',
     admin_metadata JSONB DEFAULT '{}',
+    router_metadata TEXT,  -- Admin-provided context for intelligent routing decisions
     status VARCHAR(20) NOT NULL DEFAULT 'new' CHECK (status IN ('enabled', 'disabled', 'new')),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Migration: Add router_metadata column if it doesn't exist
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'autonomous_agents' AND column_name = 'router_metadata'
+    ) THEN
+        ALTER TABLE autonomous_agents ADD COLUMN router_metadata TEXT;
+    END IF;
+END $$;
 
 -- Index for fast status queries
 CREATE INDEX IF NOT EXISTS idx_autonomous_agents_status ON autonomous_agents(status);

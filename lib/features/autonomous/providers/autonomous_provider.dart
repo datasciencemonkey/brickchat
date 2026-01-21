@@ -17,6 +17,7 @@ class AutonomousAgent {
   final String? description;
   final Map<String, dynamic> databricksMetadata;
   final Map<String, dynamic> adminMetadata;
+  final String? routerMetadata; // Admin-provided context for intelligent routing
   final String status; // 'enabled', 'disabled', 'new'
   final DateTime? createdAt;
   final DateTime? updatedAt;
@@ -28,6 +29,7 @@ class AutonomousAgent {
     this.description,
     this.databricksMetadata = const {},
     this.adminMetadata = const {},
+    this.routerMetadata,
     required this.status,
     this.createdAt,
     this.updatedAt,
@@ -41,6 +43,7 @@ class AutonomousAgent {
       description: json['description'],
       databricksMetadata: json['databricks_metadata'] ?? {},
       adminMetadata: json['admin_metadata'] ?? {},
+      routerMetadata: json['router_metadata'],
       status: json['status'] ?? 'new',
       createdAt: json['created_at'] != null
           ? DateTime.tryParse(json['created_at'])
@@ -58,6 +61,7 @@ class AutonomousAgent {
     'description': description,
     'databricks_metadata': databricksMetadata,
     'admin_metadata': adminMetadata,
+    'router_metadata': routerMetadata,
     'status': status,
     'created_at': createdAt?.toIso8601String(),
     'updated_at': updatedAt?.toIso8601String(),
@@ -70,6 +74,7 @@ class AutonomousAgent {
     String? description,
     Map<String, dynamic>? databricksMetadata,
     Map<String, dynamic>? adminMetadata,
+    String? routerMetadata,
     String? status,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -81,6 +86,7 @@ class AutonomousAgent {
       description: description ?? this.description,
       databricksMetadata: databricksMetadata ?? this.databricksMetadata,
       adminMetadata: adminMetadata ?? this.adminMetadata,
+      routerMetadata: routerMetadata ?? this.routerMetadata,
       status: status ?? this.status,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -90,6 +96,7 @@ class AutonomousAgent {
   bool get isEnabled => status == 'enabled';
   bool get isDisabled => status == 'disabled';
   bool get isNew => status == 'new';
+  bool get hasRouterMetadata => routerMetadata != null && routerMetadata!.isNotEmpty;
 }
 
 /// Routing info attached to autonomous responses
@@ -181,6 +188,33 @@ final autonomousModeAvailableProvider = Provider<bool>((ref) {
   return enabledAgents.isNotEmpty;
 });
 
+// ============ Search & Filter Providers ============
+
+/// Provider for agent search query
+final agentSearchQueryProvider = StateProvider<String>((ref) => '');
+
+/// Provider for "show enabled only" filter toggle
+final agentShowEnabledOnlyProvider = StateProvider<bool>((ref) => false);
+
+/// Provider for filtered agents based on search query and enabled filter
+final filteredAgentsProvider = Provider<List<AutonomousAgent>>((ref) {
+  final allAgents = ref.watch(allAgentsProvider);
+  final query = ref.watch(agentSearchQueryProvider).toLowerCase();
+  final showEnabledOnly = ref.watch(agentShowEnabledOnlyProvider);
+
+  return allAgents.where((agent) {
+    // Filter by enabled status if toggle is on
+    if (showEnabledOnly && !agent.isEnabled) return false;
+
+    // Filter by search query
+    if (query.isEmpty) return true;
+    return agent.name.toLowerCase().contains(query) ||
+        (agent.description?.toLowerCase().contains(query) ?? false) ||
+        agent.endpointUrl.toLowerCase().contains(query) ||
+        (agent.routerMetadata?.toLowerCase().contains(query) ?? false);
+  }).toList();
+});
+
 /// Extension methods for easy access
 extension AutonomousModeRef on WidgetRef {
   bool get isAutonomousMode => watch(autonomousModeProvider);
@@ -191,4 +225,9 @@ extension AutonomousModeRef on WidgetRef {
 
   List<AutonomousAgent> get enabledAgents => watch(enabledAgentsProvider);
   bool get isAutonomousModeAvailable => watch(autonomousModeAvailableProvider);
+
+  // Search & filter extensions
+  List<AutonomousAgent> get filteredAgents => watch(filteredAgentsProvider);
+  String get agentSearchQuery => watch(agentSearchQueryProvider);
+  bool get showEnabledAgentsOnly => watch(agentShowEnabledOnlyProvider);
 }
