@@ -271,6 +271,15 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
           footnotes = parsedResponse.footnotes;
         }
 
+        // Extract feedback state from backend
+        bool? feedbackState;
+        final feedback = message['feedback'];
+        if (feedback == 'like') {
+          feedbackState = true;
+        } else if (feedback == 'dislike') {
+          feedbackState = false;
+        }
+
         // Add to messages list for display
         _messages.add(ChatMessage(
           id: messageId,
@@ -284,6 +293,7 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
           messageId: message['message_id'],
           agentEndpoint: message['agent_endpoint'],
           footnotes: footnotes,
+          isLiked: feedbackState,
         ));
 
         // Add to conversation history for context
@@ -1998,6 +2008,14 @@ class _ChatHomePageState extends ConsumerState<ChatHomePage> {
                 setState(() {
                   _showSpeechToText = false;
                 });
+              },
+              onDismissWithText: (text) {
+                // Populate the message input field with captured text when user dismisses voice mode
+                _messageController.text = text;
+                // Move cursor to end of text
+                _messageController.selection = TextSelection.fromPosition(
+                  TextPosition(offset: text.length),
+                );
               },
               hintText: 'Speak your message...',
             ),

@@ -13,6 +13,8 @@ class SpeechToTextWidget extends ConsumerStatefulWidget {
   final VoidCallback? onCancel;
   /// Called when user manually submits recognized text via the submit button
   final Function(String)? onSubmit;
+  /// Called when user dismisses voice mode (Escape) with partial text to populate input field
+  final Function(String)? onDismissWithText;
   final String? hintText;
   final bool autoStart;
 
@@ -21,6 +23,7 @@ class SpeechToTextWidget extends ConsumerStatefulWidget {
     required this.onTextRecognized,
     this.onCancel,
     this.onSubmit,
+    this.onDismissWithText,
     this.hintText,
     this.autoStart = true,
   });
@@ -186,6 +189,7 @@ class _SpeechToTextWidgetState extends ConsumerState<SpeechToTextWidget>
   }
 
   void _cancelListening() async {
+    final textToPassBack = _recognizedText;
     await _speechToText.stop();
     if (mounted) {
       setState(() {
@@ -194,6 +198,10 @@ class _SpeechToTextWidgetState extends ConsumerState<SpeechToTextWidget>
         _errorMessage = '';
       });
       _stopAnimations();
+    }
+    // Pass any captured text back to populate the input field
+    if (textToPassBack.isNotEmpty) {
+      widget.onDismissWithText?.call(textToPassBack);
     }
     widget.onCancel?.call();
   }
@@ -224,9 +232,15 @@ class _SpeechToTextWidgetState extends ConsumerState<SpeechToTextWidget>
   }
 
   bool _handleKeyEvent(KeyEvent event) {
-    if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.escape) {
-      _cancelListening();
-      return true;
+    if (event is KeyDownEvent) {
+      if (event.logicalKey == LogicalKeyboardKey.escape) {
+        _cancelListening();
+        return true;
+      }
+      if (event.logicalKey == LogicalKeyboardKey.enter && _recognizedText.isNotEmpty) {
+        _submitText();
+        return true;
+      }
     }
     return false;
   }
@@ -315,7 +329,7 @@ class _SpeechToTextWidgetState extends ConsumerState<SpeechToTextWidget>
             _errorMessage.isNotEmpty
                 ? _errorMessage
                 : _isListening
-                    ? 'Listening... (Press Esc to cancel)'
+                    ? 'Listening... (Enter to send, Esc to cancel)'
                     : _speechEnabled
                         ? widget.hintText ?? 'Tap to speak'
                         : 'Initializing speech recognition...',

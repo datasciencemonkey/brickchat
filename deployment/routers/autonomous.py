@@ -53,6 +53,7 @@ class AgentResponse(BaseModel):
     updated_at: Optional[str] = None
 
 
+
 class DiscoveryResponse(BaseModel):
     discovered: int
     new_agents: int
