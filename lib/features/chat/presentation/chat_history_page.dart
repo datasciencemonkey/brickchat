@@ -341,39 +341,46 @@ class _ChatHistoryPageState extends ConsumerState<ChatHistoryPage> {
                                         ),
                                       ),
                                       // Agent endpoint badge
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                          vertical: 3,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: isDark
-                                              ? appColors.muted.withValues(alpha: 0.3)
-                                              : appColors.muted.withValues(alpha: 0.5),
-                                          borderRadius: BorderRadius.circular(10),
-                                          border: Border.all(
-                                            color: appColors.sidebarBorder.withValues(alpha: 0.2),
-                                            width: 0.5,
+                                      Flexible(
+                                        child: Container(
+                                          constraints: const BoxConstraints(maxWidth: 150),
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 8,
+                                            vertical: 3,
                                           ),
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(
-                                              Icons.smart_toy_outlined,
-                                              size: 11,
-                                              color: appColors.mutedForeground.withValues(alpha: 0.7),
+                                          decoration: BoxDecoration(
+                                            color: isDark
+                                                ? appColors.muted.withValues(alpha: 0.3)
+                                                : appColors.muted.withValues(alpha: 0.5),
+                                            borderRadius: BorderRadius.circular(10),
+                                            border: Border.all(
+                                              color: appColors.sidebarBorder.withValues(alpha: 0.2),
+                                              width: 0.5,
                                             ),
-                                            const SizedBox(width: 4),
-                                            Text(
-                                              agentEndpoint,
-                                              style: TextStyle(
-                                                fontSize: 10,
-                                                color: appColors.mutedForeground.withValues(alpha: 0.8),
-                                                fontWeight: FontWeight.w500,
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(
+                                                Icons.smart_toy_outlined,
+                                                size: 12,
+                                                color: appColors.mutedForeground.withValues(alpha: 0.7),
                                               ),
-                                            ),
-                                          ],
+                                              const SizedBox(width: 4),
+                                              Flexible(
+                                                child: Text(
+                                                  agentEndpoint,
+                                                  style: TextStyle(
+                                                    fontSize: 11,
+                                                    color: appColors.mutedForeground.withValues(alpha: 0.8),
+                                                    fontWeight: FontWeight.w500,
+                                                  ),
+                                                  overflow: TextOverflow.ellipsis,
+                                                  maxLines: 1,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
                                         ),
                                       ),
                                     ],
